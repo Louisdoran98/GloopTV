@@ -11,7 +11,6 @@ import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.Bundle
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -115,7 +114,6 @@ fun GloopTVApp() {
             .sortedBy { it.label.lowercase(Locale.getDefault()) }
     }
 
-    // Curate exact 6 preferred apps
     val favoriteApps = remember(sortedApps) {
         val preferredKeywords = listOf(
             listOf("now tv", "nowtv", "sky.now"),
@@ -142,7 +140,6 @@ fun GloopTVApp() {
         (matchedFavorites + fallbackApps).take(6)
     }
 
-    // Realtime Spotify & System Media Observer
     var activeMedia by remember { mutableStateOf<MediaTrackInfo?>(null) }
 
     DisposableEffect(Unit) {
@@ -153,7 +150,6 @@ fun GloopTVApp() {
             try {
                 val controllers = sessionManager?.getActiveSessions(listenerComponent)
                 val activeController = controllers?.firstOrNull {
-                    val state = it.playbackInfo
                     it.playbackState?.state == PlaybackState.STATE_PLAYING ||
                     it.playbackState?.state == PlaybackState.STATE_PAUSED
                 } ?: controllers?.firstOrNull()
@@ -180,9 +176,7 @@ fun GloopTVApp() {
                 } else {
                     activeMedia = null
                 }
-            } catch (e: SecurityException) {
-                // If notification listener permission is not yet allowed, guide or ignore safely
-            }
+            } catch (_: SecurityException) {}
         }
 
         val sessionListener = MediaSessionManager.OnActiveSessionsChangedListener {
@@ -228,7 +222,6 @@ fun GloopTVApp() {
         color = Color(0xFF0F172A)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Main Home Screen
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -240,7 +233,6 @@ fun GloopTVApp() {
                         .padding(top = 8.dp, start = 8.dp)
                 )
 
-                // Mascot in top-right (Dances if music is actively playing)
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -255,13 +247,11 @@ fun GloopTVApp() {
                     )
                 }
 
-                // Bottom Section: Media Bar + 6 Favorites Dock
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
                 ) {
-                    // Spotify / Now Playing Widget
                     activeMedia?.let { media ->
                         NowPlayingBar(
                             media = media,
@@ -276,7 +266,6 @@ fun GloopTVApp() {
                         )
                     }
 
-                    // 6 Favorites Dock (Uncropped, fit-to-aspect)
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -306,7 +295,6 @@ fun GloopTVApp() {
                 }
             }
 
-            // Slide-Up App Drawer Overlay
             AnimatedVisibility(
                 visible = isDrawerOpen,
                 enter = slideInVertically(
@@ -394,7 +382,6 @@ fun NowPlayingBar(
             )
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
-        // Album art thumbnail
         if (media.art != null) {
             Image(
                 bitmap = media.art.asImageBitmap(),
@@ -407,7 +394,6 @@ fun NowPlayingBar(
             Spacer(modifier = Modifier.width(12.dp))
         }
 
-        // Title and Artist
         Column(modifier = Modifier.widthIn(max = 240.dp)) {
             Text(
                 text = media.title,
@@ -429,7 +415,6 @@ fun NowPlayingBar(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // Play/Pause Action Button
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
@@ -439,7 +424,6 @@ fun NowPlayingBar(
         ) {
             Canvas(modifier = Modifier.size(14.dp)) {
                 if (media.isPlaying) {
-                    // Pause Bars
                     drawRect(
                         color = Color.White,
                         topLeft = Offset(1.dp.toPx(), 1.dp.toPx()),
@@ -451,7 +435,6 @@ fun NowPlayingBar(
                         size = Size(3.5.dp.toPx(), 12.dp.toPx())
                     )
                 } else {
-                    // Play Triangle
                     val path = androidx.compose.ui.graphics.Path().apply {
                         moveTo(2.dp.toPx(), 1.dp.toPx())
                         lineTo(13.dp.toPx(), 7.dp.toPx())
@@ -495,7 +478,7 @@ fun AppIconTile(
     val appBitmap = remember(app.packageName) {
         try {
             app.icon?.toBitmap(width = 320, height = 180)?.asImageBitmap()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -512,4 +495,33 @@ fun AppIconTile(
             .focusable(interactionSource = interactionSource)
             .onKeyEvent { keyEvent ->
                 if (keyEvent.type == KeyEventType.KeyDown && onDirectionKey != null) {
-                    onDirectionKe
+                    onDirectionKey(keyEvent.key)
+                } else {
+                    false
+                }
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    onFocused()
+                    onClick()
+                }
+            )
+            .padding(8.dp)
+    ) {
+        if (appBitmap != null) {
+            Image(
+                bitmap = appBitmap,
+                contentDescription = app.label,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+@Composable
+fun ClockHeader(modifier: Modifier = Modifier) {
+    var currentTime by remember { mutableStateOf("") }
+    var currentDayAndDat
