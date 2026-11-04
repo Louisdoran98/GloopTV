@@ -20,13 +20,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.6'
-
-      - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+      - name: Generate Wrapper & Build APK
+        run: |
+          sudo apt-get update && sudo apt-get install -y gradle
+          gradle wrapper --gradle-version 8.4
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -34,4 +33,3 @@ jobs:
           name: gloop-launcher-apk
           path: app/build/outputs/apk/debug/*.apk
           
-        
