@@ -176,7 +176,9 @@ fun GloopTVApp() {
                 } else {
                     activeMedia = null
                 }
-            } catch (_: SecurityException) {}
+            } catch (e: Exception) {
+                // Ignore exception safely if permission isn't granted yet
+            }
         }
 
         val sessionListener = MediaSessionManager.OnActiveSessionsChangedListener {
@@ -186,12 +188,12 @@ fun GloopTVApp() {
         try {
             sessionManager?.addOnActiveSessionsChangedListener(sessionListener, listenerComponent)
             updateMedia()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {}
 
         onDispose {
             try {
                 sessionManager?.removeOnActiveSessionsChangedListener(sessionListener)
-            } catch (_: Exception) {}
+            } catch (e: Exception) {}
         }
     }
 
@@ -478,7 +480,7 @@ fun AppIconTile(
     val appBitmap = remember(app.packageName) {
         try {
             app.icon?.toBitmap(width = 320, height = 180)?.asImageBitmap()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             null
         }
     }
@@ -523,5 +525,3 @@ fun AppIconTile(
 
 @Composable
 fun ClockHeader(modifier: Modifier = Modifier) {
-    var currentTime by remember { mutableStateOf("") }
-    var currentDayAndDat
