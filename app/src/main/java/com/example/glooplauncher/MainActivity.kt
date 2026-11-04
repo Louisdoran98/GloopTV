@@ -177,7 +177,7 @@ fun GloopTVApp() {
                     activeMedia = null
                 }
             } catch (e: Exception) {
-                // Ignore exception safely if permission isn't granted yet
+                // Media listener access pending or inactive
             }
         }
 
@@ -525,3 +525,4 @@ fun AppIconTile(
 
 @Composable
 fun ClockHeader(modifier: Modifier = Modifier) {
+    var curre
