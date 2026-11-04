@@ -1,5 +1,9 @@
 package com.example.glooplauncher
 
-import android.service.notification.NotificationListenerService
+import android.app.Service
+import android.content.Intent
+import android.os.IBinder
 
-class GloopMediaListenerService : NotificationListenerService()
+class GloopMediaListenerService : Service() {
+    override fun onBind(intent: Intent?): IBinder? = null
+}
