@@ -11,6 +11,7 @@ import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.Bundle
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -50,6 +51,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.*
@@ -177,7 +179,7 @@ fun GloopTVApp() {
                     activeMedia = null
                 }
             } catch (e: Exception) {
-                // Media listener access pending or inactive
+                activeMedia = null
             }
         }
 
@@ -281,8 +283,8 @@ fun GloopTVApp() {
                                 focusRequester = if (index == 0) homeFirstItemFocusRequester else null,
                                 onFocused = { focusedIndex = index },
                                 onClick = { launchApp(app.packageName) },
-                                onDirectionKey = { key ->
-                                    if (key == Key.DirectionDown) {
+                                onKeyCode = { keyCode ->
+                                    if (keyCode == AndroidKeyEvent.KEYCODE_DPAD_DOWN) {
                                         isDrawerOpen = true
                                         coroutineScope.launch {
                                             delay(100)
@@ -340,8 +342,8 @@ fun GloopTVApp() {
                                     isDrawerOpen = false
                                     launchApp(app.packageName)
                                 },
-                                onDirectionKey = { key ->
-                                    if (key == Key.DirectionUp && isTopRow) {
+                                onKeyCode = { keyCode ->
+                                    if (keyCode == AndroidKeyEvent.KEYCODE_DPAD_UP && isTopRow) {
                                         isDrawerOpen = false
                                         coroutineScope.launch {
                                             delay(100)
@@ -437,7 +439,7 @@ fun NowPlayingBar(
                         size = Size(3.5.dp.toPx(), 12.dp.toPx())
                     )
                 } else {
-                    val path = androidx.compose.ui.graphics.Path().apply {
+                    val path = Path().apply {
                         moveTo(2.dp.toPx(), 1.dp.toPx())
                         lineTo(13.dp.toPx(), 7.dp.toPx())
                         lineTo(2.dp.toPx(), 13.dp.toPx())
@@ -458,7 +460,7 @@ fun AppIconTile(
     focusRequester: FocusRequester? = null,
     onFocused: () -> Unit,
     onClick: () -> Unit,
-    onDirectionKey: ((Key) -> Boolean)? = null
+    onKeyCode: ((Int) -> Boolean)? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -496,8 +498,8 @@ fun AppIconTile(
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusable(interactionSource = interactionSource)
             .onKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown && onDirectionKey != null) {
-                    onDirectionKey(keyEvent.key)
+                if (keyEvent.type == KeyEventType.KeyDown && onKeyCode != null) {
+                    onKeyCode(keyEvent.nativeKeyEvent.keyCode)
                 } else {
                     false
                 }
@@ -522,7 +524,3 @@ fun AppIconTile(
         }
     }
 }
-
-@Composable
-fun ClockHeader(modifier: Modifier = Modifier) {
-    var curre
