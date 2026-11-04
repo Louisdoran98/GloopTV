@@ -126,7 +126,6 @@ fun GloopTVApp() {
         (matchedFavorites + fallbackApps).take(6)
     }
 
-    // Checks system audio manager periodically for active media playback (Spotify, etc.)
     var isMusicPlaying by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
@@ -163,7 +162,6 @@ fun GloopTVApp() {
         color = Color(0xFF0F172A)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Main Home Screen
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -194,7 +192,6 @@ fun GloopTVApp() {
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
                 ) {
-                    // 6 Favorites Dock
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -224,7 +221,6 @@ fun GloopTVApp() {
                 }
             }
 
-            // Slide-Up App Drawer Overlay
             AnimatedVisibility(
                 visible = isDrawerOpen,
                 enter = slideInVertically(
@@ -493,7 +489,6 @@ fun GloopMascot(
             val pupilShift = pupilOffsetX.dp.toPx()
             val lookDownY = 3.dp.toPx()
 
-            // Left Eye
             drawOval(
                 color = Color.White,
                 topLeft = Offset(size.width * 0.33f - eyeWidth, size.height * 0.40f - eyeHeight),
@@ -507,7 +502,6 @@ fun GloopMascot(
                 )
             }
 
-            // Right Eye
             drawOval(
                 color = Color.White,
                 topLeft = Offset(size.width * 0.67f - eyeWidth, size.height * 0.40f - eyeHeight),
@@ -534,4 +528,11 @@ fun GloopMascot(
                     startAngle = 15f,
                     sweepAngle = 150f,
                     useCenter = false,
-                    topLeft = Offset(size.width * 0.38f, size.
+                    topLeft = Offset(size.width * 0.38f, size.height * 0.52f),
+                    size = Size(size.width * 0.24f, size.height * 0.16f),
+                    style = Stroke(width = 4.dp.toPx())
+                )
+            }
+        }
+    }
+}
