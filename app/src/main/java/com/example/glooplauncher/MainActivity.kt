@@ -2,11 +2,13 @@ package com.example.glooplauncher
 
 import android.content.Intent
 import android.content.pm.ResolveInfo
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -25,18 +27,22 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -54,7 +60,8 @@ class MainActivity : ComponentActivity() {
 
 data class AppModel(
     val label: String,
-    val packageName: String
+    val packageName: String,
+    val icon: Drawable? = null
 )
 
 @Composable
@@ -70,9 +77,11 @@ fun GloopTVApp() {
         val resolveInfos: List<ResolveInfo> = pm.queryIntentActivities(intent, 0)
         resolveInfos
             .map {
+                val bannerOrIcon = it.activityInfo.loadBanner(pm) ?: it.loadIcon(pm)
                 AppModel(
                     label = it.loadLabel(pm).toString(),
-                    packageName = it.activityInfo.packageName
+                    packageName = it.activityInfo.packageName,
+                    icon = bannerOrIcon
                 )
             }
             .distinctBy { it.packageName }
@@ -106,7 +115,7 @@ fun GloopTVApp() {
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 40.dp)
             ) {
-                // Main screen view (Favorites + Clock + Mascot)
+                // Top screen view (7 Favorites Dock + Clock + Gloop Mascot)
                 item {
                     Box(
                         modifier = Modifier
@@ -169,7 +178,7 @@ fun GloopTVApp() {
                                     AppTile(
                                         app = app,
                                         width = 150.dp,
-                                        height = 96.dp,
+                                        height = 110.dp,
                                         onFocused = { focusedIndex = index },
                                         onClick = { launchApp(app.packageName) }
                                     )
@@ -179,7 +188,7 @@ fun GloopTVApp() {
                     }
                 }
 
-                // All apps drawer header
+                // All Apps (A-Z) Title Header
                 item {
                     Column(
                         modifier = Modifier
@@ -196,10 +205,10 @@ fun GloopTVApp() {
                     }
                 }
 
-                // Grid of all apps sorted alphabetically
+                // Grid of all apps
                 item {
                     val rowCount = (sortedApps.size + 4) / 5
-                    val gridHeight = (rowCount * 110).dp
+                    val gridHeight = (rowCount * 120).dp
 
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(5),
@@ -215,7 +224,7 @@ fun GloopTVApp() {
                             AppTile(
                                 app = app,
                                 width = 140.dp,
-                                height = 90.dp,
+                                height = 105.dp,
                                 onFocused = { focusedIndex = index % 7 },
                                 onClick = { launchApp(app.packageName) }
                             )
@@ -348,6 +357,7 @@ fun GloopMascot(
             val pupilShift = pupilOffsetX.dp.toPx()
             val lookDownY = 3.dp.toPx()
 
+            // Left Eye
             drawOval(
                 color = Color.White,
                 topLeft = Offset(size.width * 0.33f - eyeWidth, size.height * 0.40f - eyeHeight),
@@ -361,6 +371,7 @@ fun GloopMascot(
                 )
             }
 
+            // Right Eye
             drawOval(
                 color = Color.White,
                 topLeft = Offset(size.width * 0.67f - eyeWidth, size.height * 0.40f - eyeHeight),
@@ -374,6 +385,7 @@ fun GloopMascot(
                 )
             }
 
+            // Mouth
             val isPopping = popScale.value > 1.05f
             if (isPopping) {
                 drawOval(
@@ -399,8 +411,8 @@ fun GloopMascot(
 @Composable
 fun AppTile(
     app: AppModel,
-    width: androidx.compose.ui.unit.Dp,
-    height: androidx.compose.ui.unit.Dp,
+    width: Dp,
+    height: Dp,
     onFocused: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -422,6 +434,14 @@ fun AppTile(
     val backgroundColor = if (isFocused) Color(0xFF3B82F6) else Color(0xFF1E293B)
     val textColor = if (isFocused) Color.White else Color(0xFFCBD5E1)
 
+    val appBitmap = remember(app.packageName) {
+        try {
+            app.icon?.toBitmap(width = 96, height = 96)?.asImageBitmap()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -437,16 +457,33 @@ fun AppTile(
                     onClick()
                 }
             )
-            .padding(12.dp)
+            .padding(8.dp)
     ) {
-        Text(
-            text = app.label,
-            color = textColor,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (appBitmap != null) {
+                Image(
+                    bitmap = appBitmap,
+                    contentDescription = app.label,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            Text(
+                text = app.label,
+                color = textColor,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
