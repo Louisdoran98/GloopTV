@@ -1,4 +1,5 @@
 package com.example.glooplauncher
+
 import android.content.Intent
 import android.content.pm.ResolveInfo
 import android.os.Bundle
@@ -34,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -68,7 +72,6 @@ fun GloopTVApp() {
         }.distinctBy { it.packageName }
     }
 
-    // Tracks which app is selected/focused so Gloop's gaze follows it
     var focusedIndex by remember { mutableIntStateOf(0) }
     var popTrigger by remember { mutableIntStateOf(0) }
 
@@ -81,24 +84,12 @@ fun GloopTVApp() {
                 .fillMaxSize()
                 .padding(28.dp)
         ) {
-            // Top Left: Title & Hint
-            Column(
+            // Top Left: Time with smaller Day & Date beneath
+            ClockHeader(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(top = 12.dp, start = 8.dp)
-            ) {
-                Text(
-                    text = "Gloop TV",
-                    color = Color.White,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Your living room launcher",
-                    color = Color(0xFF64748B),
-                    fontSize = 14.sp
-                )
-            }
+            )
 
             // Top Right: Gloop Mascot
             Box(
@@ -141,7 +132,7 @@ fun GloopTVApp() {
                             onClick = {
                                 popTrigger++
                                 coroutineScope.launch {
-                                    delay(220) // Brief delay so the pop animation plays before launch
+                                    delay(220)
                                     val launchIntent = context.packageManager.getLaunchIntentForPackage(app.packageName)
                                     if (launchIntent != null) {
                                         context.startActivity(launchIntent)
@@ -157,13 +148,47 @@ fun GloopTVApp() {
 }
 
 @Composable
+fun ClockHeader(modifier: Modifier = Modifier) {
+    var currentTime by remember { mutableStateOf("") }
+    var currentDayAndDate by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val dayDateFormat = SimpleDateFormat("EEEE, d MMMM", Locale.getDefault())
+        while (true) {
+            val now = Date()
+            currentTime = timeFormat.format(now)
+            currentDayAndDate = dayDateFormat.format(now)
+            delay(1000)
+        }
+    }
+
+    Column(modifier = modifier) {
+        Text(
+            text = currentTime,
+            color = Color.White,
+            fontSize = 42.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.5).sp
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = currentDayAndDate,
+            color = Color(0xFF94A3B8),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
+            letterSpacing = 0.2.sp
+        )
+    }
+}
+
+@Composable
 fun GloopMascot(
     eyeTargetRatio: Float,
     popTrigger: Int
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "idleMotion")
 
-    // Idle floating bob
     val idleOffsetY by infiniteTransition.animateFloat(
         initialValue = -12f,
         targetValue = 12f,
@@ -174,7 +199,6 @@ fun GloopMascot(
         label = "idleOffset"
     )
 
-    // Gentle idle wobble
     val idleRotation by infiniteTransition.animateFloat(
         initialValue = -4f,
         targetValue = 4f,
@@ -185,7 +209,6 @@ fun GloopMascot(
         label = "idleRotation"
     )
 
-    // Periodic blink
     val blinkProgress by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 0.05f,
@@ -202,14 +225,12 @@ fun GloopMascot(
         label = "blink"
     )
 
-    // Smooth pupil follow transition (maps horizontal focus to pupil offset)
     val pupilOffsetX by animateFloatAsState(
-        targetValue = (eyeTargetRatio - 0.5f) * 10f, // Shifts eye left/right
+        targetValue = (eyeTargetRatio - 0.5f) * 10f,
         animationSpec = spring(stiffness = Spring.StiffnessLow),
         label = "pupilX"
     )
 
-    // Click/Launch Pop Reaction
     val popScale = remember { Animatable(1f) }
     LaunchedEffect(popTrigger) {
         if (popTrigger > 0) {
@@ -227,7 +248,6 @@ fun GloopMascot(
             .scale(popScale.value)
             .size(130.dp)
     ) {
-        // Main Gloop Slime Body
         Box(
             modifier = Modifier
                 .size(110.dp)
@@ -242,12 +262,11 @@ fun GloopMascot(
                 )
         )
 
-        // Eyes, Pupils, and Reactive Smile Canvas
         Canvas(modifier = Modifier.size(100.dp)) {
             val eyeWidth = 7.dp.toPx()
             val eyeHeight = (7.dp.toPx()) * blinkProgress
             val pupilShift = pupilOffsetX.dp.toPx()
-            val lookDownY = 3.dp.toPx() // Gloop is on top, looking down toward the bottom dock
+            val lookDownY = 3.dp.toPx()
 
             // Left Eye Sclera
             drawOval(
@@ -255,7 +274,7 @@ fun GloopMascot(
                 topLeft = Offset(size.width * 0.33f - eyeWidth, size.height * 0.40f - eyeHeight),
                 size = Size(eyeWidth * 2, eyeHeight * 2)
             )
-            // Left Pupil (follows selection)
+            // Left Pupil
             if (blinkProgress > 0.35f) {
                 drawCircle(
                     color = Color.Black,
@@ -270,7 +289,7 @@ fun GloopMascot(
                 topLeft = Offset(size.width * 0.67f - eyeWidth, size.height * 0.40f - eyeHeight),
                 size = Size(eyeWidth * 2, eyeHeight * 2)
             )
-            // Right Pupil (follows selection)
+            // Right Pupil
             if (blinkProgress > 0.35f) {
                 drawCircle(
                     color = Color.Black,
@@ -279,7 +298,7 @@ fun GloopMascot(
                 )
             }
 
-            // Smile (opens into an excited 'O' or big grin when popping)
+            // Mouth
             val isPopping = popScale.value > 1.05f
             if (isPopping) {
                 drawOval(
@@ -354,4 +373,3 @@ fun AppDockTile(
         )
     }
 }
-
