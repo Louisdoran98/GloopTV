@@ -5,6 +5,7 @@ import android.content.pm.ResolveInfo
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
@@ -15,6 +16,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -34,16 +36,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -101,6 +105,12 @@ fun GloopTVApp() {
     var focusedIndex by remember { mutableIntStateOf(0) }
     var popTrigger by remember { mutableIntStateOf(0) }
 
+    val drawerFirstItemFocusRequester = remember { FocusRequester() }
+
+    BackHandler(enabled = isDrawerOpen) {
+        isDrawerOpen = false
+    }
+
     fun launchApp(packageName: String) {
         popTrigger++
         coroutineScope.launch {
@@ -121,7 +131,7 @@ fun GloopTVApp() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(32.dp)
+                    .padding(horizontal = 40.dp, vertical = 32.dp)
             ) {
                 ClockHeader(
                     modifier = Modifier
@@ -142,37 +152,34 @@ fun GloopTVApp() {
                     )
                 }
 
-                // Bottom 7 Favorites Dock + Drawer Tile
-                Row(
+                // 7 Favorites Dock (Navigating Down on remote opens the drawer)
+                LazyRow(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
+                        .align(Alignment.BottomStart)
                         .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
-                    LazyRow(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding = PaddingValues(vertical = 8.dp)
-                    ) {
-                        itemsIndexed(favoriteApps) { index, app ->
-                            AppTile(
-                                app = app,
-                                width = 145.dp,
-                                height = 110.dp,
-                                onFocused = { focusedIndex = index },
-                                onClick = { launchApp(app.packageName) }
-                            )
-                        }
+                    itemsIndexed(favoriteApps) { index, app ->
+                        AppIconTile(
+                            app = app,
+                            width = 130.dp,
+                            height = 80.dp,
+                            onFocused = { focusedIndex = index },
+                            onClick = { launchApp(app.packageName) },
+                            onDownKey = {
+                                isDrawerOpen = true
+                                coroutineScope.launch {
+                                    delay(100)
+                                    drawerFirstItemFocusRequester.requestFocus()
+                                }
+                            }
+                        )
                     }
-
-                    // Drawer Toggle Tile
-                    DrawerTile(
-                        onClick = { isDrawerOpen = true }
-                    )
                 }
             }
 
-            // Animated Slide-Up App Drawer Overlay
+            // Slide-Up App Drawer Overlay
             AnimatedVisibility(
                 visible = isDrawerOpen,
                 enter = slideInVertically(
@@ -185,146 +192,118 @@ fun GloopTVApp() {
                 ) + fadeOut(),
                 modifier = Modifier.fillMaxSize()
             ) {
-                AppDrawerSheet(
-                    apps = sortedApps,
-                    onAppClick = { app ->
-                        isDrawerOpen = false
-                        launchApp(app.packageName)
-                    },
-                    onClose = { isDrawerOpen = false }
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0xF5020617),
+                                    Color(0xFF090D1A)
+                                )
+                            )
+                        )
+                        .padding(horizontal = 48.dp, vertical = 36.dp)
+                ) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(6),
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        itemsIndexed(sortedApps) { index, app ->
+                            AppIconTile(
+                                app = app,
+                                width = 140.dp,
+                                height = 86.dp,
+                                focusRequester = if (index == 0) drawerFirstItemFocusRequester else null,
+                                onFocused = {},
+                                onClick = {
+                                    isDrawerOpen = false
+                                    launchApp(app.packageName)
+                                },
+                                onDownKey = null
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-fun DrawerTile(onClick: () -> Unit) {
+fun AppIconTile(
+    app: AppModel,
+    width: Dp,
+    height: Dp,
+    focusRequester: FocusRequester? = null,
+    onFocused: () -> Unit,
+    onClick: () -> Unit,
+    onDownKey: (() -> Unit)? = null
+) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
+    LaunchedEffect(isFocused) {
+        if (isFocused) {
+            onFocused()
+        }
+    }
+
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.12f else 1.0f,
+        targetValue = if (isFocused) 1.15f else 1.0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "drawerScale"
+        label = "tileScale"
     )
 
-    val backgroundColor = if (isFocused) Color(0xFF3B82F6) else Color(0xFF1E293B)
+    val borderColor = if (isFocused) Color(0xFF60A5FA) else Color.Transparent
+
+    val appBitmap = remember(app.packageName) {
+        try {
+            app.icon?.toBitmap(width = 160, height = 100)?.asImageBitmap()
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .padding(vertical = 8.dp)
-            .size(width = 110.dp, height = 110.dp)
+            .size(width = width, height = height)
             .scale(scale)
-            .background(backgroundColor, RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF1E293B))
+            .border(3.dp, borderColor, RoundedCornerShape(16.dp))
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusable(interactionSource = interactionSource)
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) {
+                    if (onDownKey != null) {
+                        onDownKey()
+                        return@onKeyEvent true
+                    }
+                }
+                false
+            }
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = onClick
-            )
-            .padding(8.dp)
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Canvas(modifier = Modifier.size(32.dp)) {
-                val dotRadius = 3.dp.toPx()
-                val spacing = 10.dp.toPx()
-                for (row in 0..2) {
-                    for (col in 0..2) {
-                        drawCircle(
-                            color = Color.White,
-                            radius = dotRadius,
-                            center = Offset(
-                                size.width / 2 + (col - 1) * spacing,
-                                size.height / 2 + (row - 1) * spacing
-                            )
-                        )
-                    }
+                onClick = {
+                    onFocused()
+                    onClick()
                 }
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "All",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold
             )
-        }
-    }
-}
-
-@Composable
-fun AppDrawerSheet(
-    apps: List<AppModel>,
-    onAppClick: (AppModel) -> Unit,
-    onClose: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xF0020617),
-                        Color(0xFF090D1A)
-                    )
-                )
-            )
-            .padding(horizontal = 40.dp, vertical = 28.dp)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(
+        if (appBitmap != null) {
+            Image(
+                bitmap = appBitmap,
+                contentDescription = app.label,
+                contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 20.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "All Apps",
-                    color = Color.White,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                // Back / Close Button
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF1E293B))
-                        .clickable { onClose() }
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        text = "✕ Close",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(6),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                itemsIndexed(apps) { _, app ->
-                    AppTile(
-                        app = app,
-                        width = 130.dp,
-                        height = 105.dp,
-                        onFocused = {},
-                        onClick = { onAppClick(app) }
-                    )
-                }
-            }
+                    .fillMaxSize()
+                    .padding(10.dp)
+            )
         }
     }
 }
@@ -450,6 +429,7 @@ fun GloopMascot(
             val pupilShift = pupilOffsetX.dp.toPx()
             val lookDownY = 3.dp.toPx()
 
+            // Left Eye
             drawOval(
                 color = Color.White,
                 topLeft = Offset(size.width * 0.33f - eyeWidth, size.height * 0.40f - eyeHeight),
@@ -463,6 +443,7 @@ fun GloopMascot(
                 )
             }
 
+            // Right Eye
             drawOval(
                 color = Color.White,
                 topLeft = Offset(size.width * 0.67f - eyeWidth, size.height * 0.40f - eyeHeight),
@@ -476,6 +457,7 @@ fun GloopMascot(
                 )
             }
 
+            // Mouth
             val isPopping = popScale.value > 1.05f
             if (isPopping) {
                 drawOval(
@@ -494,86 +476,6 @@ fun GloopMascot(
                     style = Stroke(width = 4.dp.toPx())
                 )
             }
-        }
-    }
-}
-
-@Composable
-fun AppTile(
-    app: AppModel,
-    width: Dp,
-    height: Dp,
-    onFocused: () -> Unit,
-    onClick: () -> Unit
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-
-    LaunchedEffect(isFocused) {
-        if (isFocused) {
-            onFocused()
-        }
-    }
-
-    val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.12f else 1.0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "tileScale"
-    )
-
-    val backgroundColor = if (isFocused) Color(0xFF3B82F6) else Color(0xFF1E293B)
-    val textColor = if (isFocused) Color.White else Color(0xFFCBD5E1)
-
-    val appBitmap = remember(app.packageName) {
-        try {
-            app.icon?.toBitmap(width = 96, height = 96)?.asImageBitmap()
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(width = width, height = height)
-            .scale(scale)
-            .background(backgroundColor, RoundedCornerShape(16.dp))
-            .focusable(interactionSource = interactionSource)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {
-                    onFocused()
-                    onClick()
-                }
-            )
-            .padding(8.dp)
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (appBitmap != null) {
-                Image(
-                    bitmap = appBitmap,
-                    contentDescription = app.label,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-            }
-
-            Text(
-                text = app.label,
-                color = textColor,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
 }
