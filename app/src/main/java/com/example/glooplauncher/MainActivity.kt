@@ -106,6 +106,7 @@ fun GloopTVApp() {
     var popTrigger by remember { mutableIntStateOf(0) }
 
     val drawerFirstItemFocusRequester = remember { FocusRequester() }
+    val homeFirstItemFocusRequester = remember { FocusRequester() }
 
     BackHandler(enabled = isDrawerOpen) {
         isDrawerOpen = false
@@ -152,7 +153,7 @@ fun GloopTVApp() {
                     )
                 }
 
-                // 7 Favorites Dock (Navigating Down on remote opens the drawer)
+                // 7 Favorites Dock (Navigating Down opens the drawer)
                 LazyRow(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -163,16 +164,20 @@ fun GloopTVApp() {
                     itemsIndexed(favoriteApps) { index, app ->
                         AppIconTile(
                             app = app,
-                            width = 130.dp,
+                            width = 135.dp,
                             height = 80.dp,
+                            focusRequester = if (index == 0) homeFirstItemFocusRequester else null,
                             onFocused = { focusedIndex = index },
                             onClick = { launchApp(app.packageName) },
-                            onDownKey = {
-                                isDrawerOpen = true
-                                coroutineScope.launch {
-                                    delay(100)
-                                    drawerFirstItemFocusRequester.requestFocus()
-                                }
+                            onDirectionKey = { key ->
+                                if (key == Key.DirectionDown) {
+                                    isDrawerOpen = true
+                                    coroutineScope.launch {
+                                        delay(100)
+                                        drawerFirstItemFocusRequester.requestFocus()
+                                    }
+                                    true
+                                } else false
                             }
                         )
                     }
@@ -198,7 +203,7 @@ fun GloopTVApp() {
                         .background(
                             Brush.verticalGradient(
                                 listOf(
-                                    Color(0xF5020617),
+                                    Color(0xF8020617),
                                     Color(0xFF090D1A)
                                 )
                             )
@@ -212,6 +217,7 @@ fun GloopTVApp() {
                         modifier = Modifier.fillMaxSize()
                     ) {
                         itemsIndexed(sortedApps) { index, app ->
+                            val isTopRow = index < 6
                             AppIconTile(
                                 app = app,
                                 width = 140.dp,
@@ -222,7 +228,16 @@ fun GloopTVApp() {
                                     isDrawerOpen = false
                                     launchApp(app.packageName)
                                 },
-                                onDownKey = null
+                                onDirectionKey = { key ->
+                                    if (key == Key.DirectionUp && isTopRow) {
+                                        isDrawerOpen = false
+                                        coroutineScope.launch {
+                                            delay(100)
+                                            homeFirstItemFocusRequester.requestFocus()
+                                        }
+                                        true
+                                    } else false
+                                }
                             )
                         }
                     }
@@ -240,7 +255,7 @@ fun AppIconTile(
     focusRequester: FocusRequester? = null,
     onFocused: () -> Unit,
     onClick: () -> Unit,
-    onDownKey: (() -> Unit)? = null
+    onDirectionKey: ((Key) -> Boolean)? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -252,7 +267,7 @@ fun AppIconTile(
     }
 
     val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.15f else 1.0f,
+        targetValue = if (isFocused) 1.14f else 1.0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "tileScale"
     )
@@ -261,7 +276,7 @@ fun AppIconTile(
 
     val appBitmap = remember(app.packageName) {
         try {
-            app.icon?.toBitmap(width = 160, height = 100)?.asImageBitmap()
+            app.icon?.toBitmap(width = 320, height = 180)?.asImageBitmap()
         } catch (e: Exception) {
             null
         }
@@ -272,19 +287,17 @@ fun AppIconTile(
         modifier = Modifier
             .size(width = width, height = height)
             .scale(scale)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(Color(0xFF1E293B))
-            .border(3.dp, borderColor, RoundedCornerShape(16.dp))
+            .border(3.dp, borderColor, RoundedCornerShape(14.dp))
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusable(interactionSource = interactionSource)
             .onKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) {
-                    if (onDownKey != null) {
-                        onDownKey()
-                        return@onKeyEvent true
-                    }
+                if (keyEvent.type == KeyEventType.KeyDown && onDirectionKey != null) {
+                    onDirectionKey(keyEvent.key)
+                } else {
+                    false
                 }
-                false
             }
             .clickable(
                 interactionSource = interactionSource,
@@ -299,10 +312,8 @@ fun AppIconTile(
             Image(
                 bitmap = appBitmap,
                 contentDescription = app.label,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(10.dp)
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
             )
         }
     }
