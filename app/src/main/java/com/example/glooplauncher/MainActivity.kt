@@ -1,15 +1,10 @@
 package com.example.glooplauncher
 
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ResolveInfo
-import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
-import android.media.MediaMetadata
-import android.media.session.MediaController
-import android.media.session.MediaSessionManager
-import android.media.session.PlaybackState
+import android.media.AudioManager
 import android.os.Bundle
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.ComponentActivity
@@ -35,7 +30,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,14 +45,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,14 +74,6 @@ data class AppModel(
     val label: String,
     val packageName: String,
     val icon: Drawable? = null
-)
-
-data class MediaTrackInfo(
-    val title: String,
-    val artist: String,
-    val art: Bitmap? = null,
-    val isPlaying: Boolean = false,
-    val controller: MediaController? = null
 )
 
 @Composable
@@ -142,60 +126,13 @@ fun GloopTVApp() {
         (matchedFavorites + fallbackApps).take(6)
     }
 
-    var activeMedia by remember { mutableStateOf<MediaTrackInfo?>(null) }
-
-    DisposableEffect(Unit) {
-        val sessionManager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
-        val listenerComponent = ComponentName(context, GloopMediaListenerService::class.java)
-
-        fun updateMedia() {
-            try {
-                val controllers = sessionManager?.getActiveSessions(listenerComponent)
-                val activeController = controllers?.firstOrNull {
-                    it.playbackState?.state == PlaybackState.STATE_PLAYING ||
-                    it.playbackState?.state == PlaybackState.STATE_PAUSED
-                } ?: controllers?.firstOrNull()
-
-                if (activeController != null) {
-                    val metadata = activeController.metadata
-                    val playbackState = activeController.playbackState
-                    val isPlaying = playbackState?.state == PlaybackState.STATE_PLAYING
-
-                    val title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
-                    val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
-                    val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                        ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-
-                    if (!title.isNullOrEmpty()) {
-                        activeMedia = MediaTrackInfo(
-                            title = title,
-                            artist = artist,
-                            art = art,
-                            isPlaying = isPlaying,
-                            controller = activeController
-                        )
-                    }
-                } else {
-                    activeMedia = null
-                }
-            } catch (e: Exception) {
-                activeMedia = null
-            }
-        }
-
-        val sessionListener = MediaSessionManager.OnActiveSessionsChangedListener {
-            updateMedia()
-        }
-
-        try {
-            sessionManager?.addOnActiveSessionsChangedListener(sessionListener, listenerComponent)
-            updateMedia()
-        } catch (e: Exception) {}
-
-        onDispose {
-            try {
-                sessionManager?.removeOnActiveSessionsChangedListener(sessionListener)
-            } catch (e: Exception) {}
+    // Checks system audio manager periodically for active media playback (Spotify, etc.)
+    var isMusicPlaying by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        while (true) {
+            isMusicPlaying = audioManager?.isMusicActive == true
+            delay(1000)
         }
     }
 
@@ -226,6 +163,7 @@ fun GloopTVApp() {
         color = Color(0xFF0F172A)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            // Main Home Screen
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -247,7 +185,7 @@ fun GloopTVApp() {
                     GloopMascot(
                         eyeTargetRatio = eyeTargetRatio,
                         popTrigger = popTrigger,
-                        isDancing = activeMedia?.isPlaying == true
+                        isDancing = isMusicPlaying
                     )
                 }
 
@@ -256,20 +194,7 @@ fun GloopTVApp() {
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
                 ) {
-                    activeMedia?.let { media ->
-                        NowPlayingBar(
-                            media = media,
-                            onTogglePlayPause = {
-                                if (media.isPlaying) {
-                                    media.controller?.transportControls?.pause()
-                                } else {
-                                    media.controller?.transportControls?.play()
-                                }
-                            },
-                            modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
-                        )
-                    }
-
+                    // 6 Favorites Dock
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -299,6 +224,7 @@ fun GloopTVApp() {
                 }
             }
 
+            // Slide-Up App Drawer Overlay
             AnimatedVisibility(
                 visible = isDrawerOpen,
                 enter = slideInVertically(
@@ -355,97 +281,6 @@ fun GloopTVApp() {
                             )
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun NowPlayingBar(
-    media: MediaTrackInfo,
-    onTogglePlayPause: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-
-    val borderColor = if (isFocused) Color(0xFF10B981) else Color.Transparent
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xD01E293B))
-            .border(2.dp, borderColor, RoundedCornerShape(14.dp))
-            .focusable(interactionSource = interactionSource)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onTogglePlayPause
-            )
-            .padding(horizontal = 14.dp, vertical = 8.dp)
-    ) {
-        if (media.art != null) {
-            Image(
-                bitmap = media.art.asImageBitmap(),
-                contentDescription = "Album Art",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(8.dp))
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-        }
-
-        Column(modifier = Modifier.widthIn(max = 240.dp)) {
-            Text(
-                text = media.title,
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = media.artist,
-                color = Color(0xFF94A3B8),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(30.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF334155))
-        ) {
-            Canvas(modifier = Modifier.size(14.dp)) {
-                if (media.isPlaying) {
-                    drawRect(
-                        color = Color.White,
-                        topLeft = Offset(1.dp.toPx(), 1.dp.toPx()),
-                        size = Size(3.5.dp.toPx(), 12.dp.toPx())
-                    )
-                    drawRect(
-                        color = Color.White,
-                        topLeft = Offset(9.dp.toPx(), 1.dp.toPx()),
-                        size = Size(3.5.dp.toPx(), 12.dp.toPx())
-                    )
-                } else {
-                    val path = Path().apply {
-                        moveTo(2.dp.toPx(), 1.dp.toPx())
-                        lineTo(13.dp.toPx(), 7.dp.toPx())
-                        lineTo(2.dp.toPx(), 13.dp.toPx())
-                        close()
-                    }
-                    drawPath(path = path, color = Color.White)
                 }
             }
         }
@@ -524,3 +359,179 @@ fun AppIconTile(
         }
     }
 }
+
+@Composable
+fun ClockHeader(modifier: Modifier = Modifier) {
+    var currentTime by remember { mutableStateOf("") }
+    var currentDayAndDate by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val dayDateFormat = SimpleDateFormat("EEEE, d MMMM", Locale.getDefault())
+        while (true) {
+            val now = Date()
+            currentTime = timeFormat.format(now)
+            currentDayAndDate = dayDateFormat.format(now)
+            delay(1000)
+        }
+    }
+
+    Column(modifier = modifier) {
+        Text(
+            text = currentTime,
+            color = Color.White,
+            fontSize = 42.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.5).sp
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = currentDayAndDate,
+            color = Color(0xFF94A3B8),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
+            letterSpacing = 0.2.sp
+        )
+    }
+}
+
+@Composable
+fun GloopMascot(
+    eyeTargetRatio: Float,
+    popTrigger: Int,
+    isDancing: Boolean = false
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "mascotMotion")
+    val animDuration = if (isDancing) 480 else 1400
+
+    val idleOffsetY by infiniteTransition.animateFloat(
+        initialValue = if (isDancing) -26f else -12f,
+        targetValue = if (isDancing) 18f else 12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(animDuration, easing = if (isDancing) FastOutLinearInEasing else EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "idleOffset"
+    )
+
+    val idleRotation by infiniteTransition.animateFloat(
+        initialValue = if (isDancing) -12f else -4f,
+        targetValue = if (isDancing) 12f else 4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (isDancing) animDuration * 2 else 1800, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "idleRotation"
+    )
+
+    val danceScaleY by infiniteTransition.animateFloat(
+        initialValue = if (isDancing) 0.88f else 1.0f,
+        targetValue = if (isDancing) 1.12f else 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(animDuration, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "danceScaleY"
+    )
+
+    val blinkProgress by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.05f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 3600
+                1f at 0
+                1f at 3400
+                0.05f at 3500
+                1f at 3600
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "blink"
+    )
+
+    val pupilOffsetX by animateFloatAsState(
+        targetValue = (eyeTargetRatio - 0.5f) * 10f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "pupilX"
+    )
+
+    val popScale = remember { Animatable(1f) }
+    LaunchedEffect(popTrigger) {
+        if (popTrigger > 0) {
+            popScale.animateTo(1.32f, animationSpec = tween(100, easing = FastOutLinearInEasing))
+            popScale.animateTo(0.85f, animationSpec = tween(90, easing = LinearOutSlowInEasing))
+            popScale.animateTo(1.0f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+        }
+    }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .offset(y = idleOffsetY.dp)
+            .rotate(idleRotation)
+            .scale(scaleX = popScale.value, scaleY = popScale.value * danceScaleY)
+            .size(130.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(110.dp)
+                .background(
+                    color = Color(0xFF10B981),
+                    shape = RoundedCornerShape(
+                        topStart = 48.dp,
+                        topEnd = 48.dp,
+                        bottomStart = 34.dp,
+                        bottomEnd = 34.dp
+                    )
+                )
+        )
+
+        Canvas(modifier = Modifier.size(100.dp)) {
+            val eyeWidth = 7.dp.toPx()
+            val eyeHeight = (7.dp.toPx()) * blinkProgress
+            val pupilShift = pupilOffsetX.dp.toPx()
+            val lookDownY = 3.dp.toPx()
+
+            // Left Eye
+            drawOval(
+                color = Color.White,
+                topLeft = Offset(size.width * 0.33f - eyeWidth, size.height * 0.40f - eyeHeight),
+                size = Size(eyeWidth * 2, eyeHeight * 2)
+            )
+            if (blinkProgress > 0.35f) {
+                drawCircle(
+                    color = Color.Black,
+                    radius = eyeWidth * 0.52f,
+                    center = Offset(size.width * 0.33f + pupilShift, size.height * 0.40f + lookDownY)
+                )
+            }
+
+            // Right Eye
+            drawOval(
+                color = Color.White,
+                topLeft = Offset(size.width * 0.67f - eyeWidth, size.height * 0.40f - eyeHeight),
+                size = Size(eyeWidth * 2, eyeHeight * 2)
+            )
+            if (blinkProgress > 0.35f) {
+                drawCircle(
+                    color = Color.Black,
+                    radius = eyeWidth * 0.52f,
+                    center = Offset(size.width * 0.67f + pupilShift, size.height * 0.40f + lookDownY)
+                )
+            }
+
+            val isExcited = popScale.value > 1.05f || isDancing
+            if (isExcited) {
+                drawOval(
+                    color = Color(0xFF064E3B),
+                    topLeft = Offset(size.width * 0.41f, size.height * 0.54f),
+                    size = Size(size.width * 0.18f, size.height * 0.19f)
+                )
+            } else {
+                drawArc(
+                    color = Color(0xFF064E3B),
+                    startAngle = 15f,
+                    sweepAngle = 150f,
+                    useCenter = false,
+                    topLeft = Offset(size.width * 0.38f, size.
