@@ -1,93 +1,138 @@
 package com.example.glooplauncher
 
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.AudioManager
+import android.content.pm.ResolveInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.input.key.*
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
-import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.*
-import kotlin.math.*
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-            super.onCreate(savedInstanceState)
-                    setContent {
-                                GloopTVHome()
-                                        }
-                                            }
-                                            }
+        super.onCreate(savedInstanceState)
+        setContent {
+            GloopTVApp()
+        }
+    }
+}
 
-                                            data class TVCardData(val label: String, val packageName: String, val dotColor: Color)
+data class AppModel(
+    val label: String,
+    val packageName: String
+)
 
-                                            @Composable
-                                            fun GloopTVHome() {
-                                                val context = LocalContext.current
-                                                    var focusedCardTarget by remember { mutableStateOf(Offset.Zero) }
-                                                        var squashTrigger by remember { mutableStateOf(false) }
+@Composable
+fun GloopTVApp() {
+    val context = LocalContext.current
+    val apps = remember {
+        val pm = context.packageManager
+        val intent = Intent(Intent.ACTION_MAIN, null).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+        val resolveInfos: List<ResolveInfo> = pm.queryIntentActivities(intent, 0)
+        resolveInfos.map {
+            AppModel(
+                label = it.loadLabel(pm).toString(),
+                packageName = it.activityInfo.packageName
+            )
+        }.distinctBy { it.packageName }
+    }
 
-                                                            val apps = remember {
-                                                                    listOf(
-                                                                                TVCardData("YouTube", "com.google.android.youtube.tv", Color(0xFFEF4444)),
-                                                                                            TVCardData("Netflix", "com.netflix.ninja", Color(0xFFE50914)),
-                                                                                                        TVCardData("Plex", "com.plexapp.android", Color(0xFFF59E0B)),
-                                                                                                                    TVCardData("Spotify", "com.spotify.tv.android", Color(0xFF10B981)),
-                                                                                                                                TVCardData("Settings", "com.android.tv.settings", Color(0xFF94A3B8))
-                                                                                                                                        )
-                                                                                                                                            }
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color(0xFF0F172A)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp)
+        ) {
+            Text(
+                text = "Gloop TV",
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
 
-                                                                                                                                                Box(
-                                                                                                                                                        modifier = Modifier
-                                                                                                                                                                    .fillMaxSize()
-                                                                                                                                                                                .background(Color(0xFF11141B))
-                                                                                                                                                                                            .padding(horizontal = 72.dp, vertical = 56.dp)
-                                                                                                                                                                                                ) {
-                                                                                                                                                                                                        // TOP STAGE: Clock on Left, Gloop on Right Shelf
-                                                                                                                                                                                                                Row(
-                                                                                                                                                                                                                            modifier = Modifier
-                                                                                                                                                                                                                                            .fillMaxWidth()
-                                                                                                                                                                                                                                                            .align(Alignment.TopCenter),
-                                                                                                                                                                                                                                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                                                                                                                                                                                                                                                    verticalAlignment = Alignment.Top
-                                                                                                                                                                                                                                                                                            ) {
-                                                                                                                                                                                                                                                                                                        LiveClockWidget()
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 140.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(apps) { app ->
+                    AppTile(app = app) {
+                        val launchIntent = context.packageManager.getLaunchIntentForPackage(app.packageName)
+                        if (launchIntent != null) {
+                            context.startActivity(launchIntent)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
-                                                                                                                                                                                                                                                                                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                                                                                                                                                                                                                                                                                                    GloopCompanion(
-                                                                                                                                                                                                                                                                                                                                                        focusedTarget = focusedCardTarget,
-                                                                                                                                                                                                                                                                                                                                                                            isSquashing = squashTrigger,
-                                                                                                                                                                                                                                                                                                                                                                                                onSquashDone = { squashTrigger = false }
-                                                                                                                                                                                                                                                                                                                                                                                                                )
-                                                                                                                                                                                                                                                                                                                                                                                                                                Box(
-                                                                                                                                                                                                                                                                                                                                                                                                                                                    modifier = Modifier
+@Composable
+fun AppTile(app: AppModel, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    val scale = if (isFocused) 1.08f else 1.0f
+    val backgroundColor = if (isFocused) Color(0xFF3B82F6) else Color(0xFF1E293B)
+    val textColor = if (isFocused) Color.White else Color(0xFFCBD5E1)
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(140.dp, 100.dp)
+            .scale(scale)
+            .background(backgroundColor, RoundedCornerShape(12.dp))
+            .focusable(interactionSource = interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(12.dp)
+    ) {
+        Text(
+            text = app.label,
+            color = textColor,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+modifier = Modifier
                                                                                                                                                                                                                                                                                                                                                                                                                                                                             .width(220.dp)
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     .height(2.5.dp)
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             .background(Color(0xFF222836))
