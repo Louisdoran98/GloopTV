@@ -6,7 +6,12 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -15,7 +20,6 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -32,6 +36,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -92,6 +97,7 @@ fun GloopTVApp() {
         sortedApps.take(7)
     }
 
+    var isDrawerOpen by remember { mutableStateOf(false) }
     var focusedIndex by remember { mutableIntStateOf(0) }
     var popTrigger by remember { mutableIntStateOf(0) }
 
@@ -111,125 +117,212 @@ fun GloopTVApp() {
         color = Color(0xFF0F172A)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 40.dp)
+            // Main Home Screen
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp)
             ) {
-                // Top screen view (7 Favorites Dock + Clock + Gloop Mascot)
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillParentMaxHeight()
-                            .padding(28.dp)
-                    ) {
-                        ClockHeader(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(top = 12.dp, start = 8.dp)
-                        )
+                ClockHeader(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = 8.dp, start = 8.dp)
+                )
 
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = 10.dp, end = 20.dp)
-                        ) {
-                            val total = if (favoriteApps.isNotEmpty()) favoriteApps.size else 1
-                            val eyeTargetRatio = (focusedIndex.toFloat() / (total - 1).coerceAtLeast(1))
-                            GloopMascot(
-                                eyeTargetRatio = eyeTargetRatio,
-                                popTrigger = popTrigger
-                            )
-                        }
-
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 12.dp, start = 4.dp, end = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "FAVOURITES",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    letterSpacing = 1.5.sp
-                                )
-                                Text(
-                                    text = "Scroll down for all apps ↓",
-                                    color = Color(0xFF64748B),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                itemsIndexed(favoriteApps) { index, app ->
-                                    AppTile(
-                                        app = app,
-                                        width = 150.dp,
-                                        height = 110.dp,
-                                        onFocused = { focusedIndex = index },
-                                        onClick = { launchApp(app.packageName) }
-                                    )
-                                }
-                            }
-                        }
-                    }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 8.dp, end = 16.dp)
+                ) {
+                    val total = if (favoriteApps.isNotEmpty()) favoriteApps.size else 1
+                    val eyeTargetRatio = (focusedIndex.toFloat() / (total - 1).coerceAtLeast(1))
+                    GloopMascot(
+                        eyeTargetRatio = eyeTargetRatio,
+                        popTrigger = popTrigger
+                    )
                 }
 
-                // All Apps (A-Z) Title Header
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 32.dp, end = 32.dp, top = 16.dp, bottom = 16.dp)
+                // Bottom 7 Favorites Dock + Drawer Tile
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    LazyRow(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
-                        Text(
-                            text = "ALL APPS (A-Z)",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 1.5.sp
-                        )
-                    }
-                }
-
-                // Grid of all apps
-                item {
-                    val rowCount = (sortedApps.size + 4) / 5
-                    val gridHeight = (rowCount * 120).dp
-
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(5),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(gridHeight)
-                            .padding(horizontal = 32.dp),
-                        userScrollEnabled = false
-                    ) {
-                        itemsIndexed(sortedApps) { index, app ->
+                        itemsIndexed(favoriteApps) { index, app ->
                             AppTile(
                                 app = app,
-                                width = 140.dp,
-                                height = 105.dp,
-                                onFocused = { focusedIndex = index % 7 },
+                                width = 145.dp,
+                                height = 110.dp,
+                                onFocused = { focusedIndex = index },
                                 onClick = { launchApp(app.packageName) }
                             )
                         }
                     }
+
+                    // Drawer Toggle Tile
+                    DrawerTile(
+                        onClick = { isDrawerOpen = true }
+                    )
+                }
+            }
+
+            // Animated Slide-Up App Drawer Overlay
+            AnimatedVisibility(
+                visible = isDrawerOpen,
+                enter = slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                ) + fadeIn(),
+                exit = slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = tween(220)
+                ) + fadeOut(),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                AppDrawerSheet(
+                    apps = sortedApps,
+                    onAppClick = { app ->
+                        isDrawerOpen = false
+                        launchApp(app.packageName)
+                    },
+                    onClose = { isDrawerOpen = false }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DrawerTile(onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (isFocused) 1.12f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "drawerScale"
+    )
+
+    val backgroundColor = if (isFocused) Color(0xFF3B82F6) else Color(0xFF1E293B)
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .padding(vertical = 8.dp)
+            .size(width = 110.dp, height = 110.dp)
+            .scale(scale)
+            .background(backgroundColor, RoundedCornerShape(16.dp))
+            .focusable(interactionSource = interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(8.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Canvas(modifier = Modifier.size(32.dp)) {
+                val dotRadius = 3.dp.toPx()
+                val spacing = 10.dp.toPx()
+                for (row in 0..2) {
+                    for (col in 0..2) {
+                        drawCircle(
+                            color = Color.White,
+                            radius = dotRadius,
+                            center = Offset(
+                                size.width / 2 + (col - 1) * spacing,
+                                size.height / 2 + (row - 1) * spacing
+                            )
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "All",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+fun AppDrawerSheet(
+    apps: List<AppModel>,
+    onAppClick: (AppModel) -> Unit,
+    onClose: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xF0020617),
+                        Color(0xFF090D1A)
+                    )
+                )
+            )
+            .padding(horizontal = 40.dp, vertical = 28.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 20.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "All Apps",
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                // Back / Close Button
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF1E293B))
+                        .clickable { onClose() }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "✕ Close",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(6),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                itemsIndexed(apps) { _, app ->
+                    AppTile(
+                        app = app,
+                        width = 130.dp,
+                        height = 105.dp,
+                        onFocused = {},
+                        onClick = { onAppClick(app) }
+                    )
                 }
             }
         }
@@ -357,7 +450,6 @@ fun GloopMascot(
             val pupilShift = pupilOffsetX.dp.toPx()
             val lookDownY = 3.dp.toPx()
 
-            // Left Eye
             drawOval(
                 color = Color.White,
                 topLeft = Offset(size.width * 0.33f - eyeWidth, size.height * 0.40f - eyeHeight),
@@ -371,7 +463,6 @@ fun GloopMascot(
                 )
             }
 
-            // Right Eye
             drawOval(
                 color = Color.White,
                 topLeft = Offset(size.width * 0.67f - eyeWidth, size.height * 0.40f - eyeHeight),
@@ -385,7 +476,6 @@ fun GloopMascot(
                 )
             }
 
-            // Mouth
             val isPopping = popScale.value > 1.05f
             if (isPopping) {
                 drawOval(
