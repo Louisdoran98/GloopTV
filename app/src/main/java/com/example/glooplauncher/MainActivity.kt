@@ -97,8 +97,34 @@ fun GloopTVApp() {
             .sortedBy { it.label.lowercase(Locale.getDefault()) }
     }
 
+    // Match your preferred 6 apps: Now TV, Prime Video, Disney+, Spotify, Paramount+, Netflix
     val favoriteApps = remember(sortedApps) {
-        sortedApps.take(7)
+        val preferredKeywords = listOf(
+            listOf("now tv", "nowtv", "sky.now"),
+            listOf("prime video", "amazon.video", "amazon.avod", "amazon instant video"),
+            listOf("disney", "disneyplus"),
+            listOf("spotify"),
+            listOf("paramount", "cbs.app", "cbs"),
+            listOf("netflix")
+        )
+
+        val matchedFavorites = mutableListOf<AppModel>()
+
+        for (keywords in preferredKeywords) {
+            val found = sortedApps.firstOrNull { app ->
+                val labelLower = app.label.lowercase(Locale.getDefault())
+                val packageLower = app.packageName.lowercase(Locale.getDefault())
+                keywords.any { k -> labelLower.contains(k) || packageLower.contains(k) }
+            }
+            if (found != null && !matchedFavorites.contains(found)) {
+                matchedFavorites.add(found)
+            }
+        }
+
+        // Fill remaining slots with alphabetized apps if any preferred app isn't installed
+        val fallbackApps = sortedApps.filter { !matchedFavorites.contains(it) }
+        val combined = (matchedFavorites + fallbackApps).take(6)
+        combined
     }
 
     var isDrawerOpen by remember { mutableStateOf(false) }
@@ -153,7 +179,7 @@ fun GloopTVApp() {
                     )
                 }
 
-                // 7 Favorites Dock (Navigating Down opens the drawer)
+                // 6 Favorites Dock
                 LazyRow(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -164,8 +190,8 @@ fun GloopTVApp() {
                     itemsIndexed(favoriteApps) { index, app ->
                         AppIconTile(
                             app = app,
-                            width = 135.dp,
-                            height = 80.dp,
+                            width = 145.dp,
+                            height = 86.dp,
                             focusRequester = if (index == 0) homeFirstItemFocusRequester else null,
                             onFocused = { focusedIndex = index },
                             onClick = { launchApp(app.packageName) },
@@ -220,7 +246,7 @@ fun GloopTVApp() {
                             val isTopRow = index < 6
                             AppIconTile(
                                 app = app,
-                                width = 140.dp,
+                                width = 145.dp,
                                 height = 86.dp,
                                 focusRequester = if (index == 0) drawerFirstItemFocusRequester else null,
                                 onFocused = {},
