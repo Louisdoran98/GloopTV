@@ -13,7 +13,11 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
@@ -58,88 +62,164 @@ fun GloopTVApp() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    val apps = remember {
+    val sortedApps = remember {
         val pm = context.packageManager
         val intent = Intent(Intent.ACTION_MAIN, null).apply {
             addCategory(Intent.CATEGORY_LAUNCHER)
         }
         val resolveInfos: List<ResolveInfo> = pm.queryIntentActivities(intent, 0)
-        resolveInfos.map {
-            AppModel(
-                label = it.loadLabel(pm).toString(),
-                packageName = it.activityInfo.packageName
-            )
-        }.distinctBy { it.packageName }
+        resolveInfos
+            .map {
+                AppModel(
+                    label = it.loadLabel(pm).toString(),
+                    packageName = it.activityInfo.packageName
+                )
+            }
+            .distinctBy { it.packageName }
+            .sortedBy { it.label.lowercase(Locale.getDefault()) }
+    }
+
+    val favoriteApps = remember(sortedApps) {
+        sortedApps.take(7)
     }
 
     var focusedIndex by remember { mutableIntStateOf(0) }
     var popTrigger by remember { mutableIntStateOf(0) }
 
+    fun launchApp(packageName: String) {
+        popTrigger++
+        coroutineScope.launch {
+            delay(220)
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+            if (launchIntent != null) {
+                context.startActivity(launchIntent)
+            }
+        }
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Color(0xFF0F172A)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(28.dp)
-        ) {
-            // Top Left: Time with smaller Day & Date beneath
-            ClockHeader(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 12.dp, start = 8.dp)
-            )
-
-            // Top Right: Gloop Mascot
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 10.dp, end = 20.dp)
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 40.dp)
             ) {
-                val total = if (apps.isNotEmpty()) apps.size else 1
-                val eyeTargetRatio = (focusedIndex.toFloat() / (total - 1).coerceAtLeast(1))
-                GloopMascot(
-                    eyeTargetRatio = eyeTargetRatio,
-                    popTrigger = popTrigger
-                )
-            }
+                // Main screen view (Favorites + Clock + Mascot)
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fillParentMaxHeight()
+                            .padding(28.dp)
+                    ) {
+                        ClockHeader(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(top = 12.dp, start = 8.dp)
+                        )
 
-            // Bottom: Horizontal App Bar
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-            ) {
-                Text(
-                    text = "FAVORITES & APPS",
-                    color = Color(0xFF94A3B8),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 1.5.sp,
-                    modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
-                )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 10.dp, end = 20.dp)
+                        ) {
+                            val total = if (favoriteApps.isNotEmpty()) favoriteApps.size else 1
+                            val eyeTargetRatio = (focusedIndex.toFloat() / (total - 1).coerceAtLeast(1))
+                            GloopMascot(
+                                eyeTargetRatio = eyeTargetRatio,
+                                popTrigger = popTrigger
+                            )
+                        }
 
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    itemsIndexed(apps) { index, app ->
-                        AppDockTile(
-                            app = app,
-                            onFocused = { focusedIndex = index },
-                            onClick = {
-                                popTrigger++
-                                coroutineScope.launch {
-                                    delay(220)
-                                    val launchIntent = context.packageManager.getLaunchIntentForPackage(app.packageName)
-                                    if (launchIntent != null) {
-                                        context.startActivity(launchIntent)
-                                    }
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 12.dp, start = 4.dp, end = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "FAVOURITES",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    letterSpacing = 1.5.sp
+                                )
+                                Text(
+                                    text = "Scroll down for all apps ↓",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                itemsIndexed(favoriteApps) { index, app ->
+                                    AppTile(
+                                        app = app,
+                                        width = 150.dp,
+                                        height = 96.dp,
+                                        onFocused = { focusedIndex = index },
+                                        onClick = { launchApp(app.packageName) }
+                                    )
                                 }
                             }
+                        }
+                    }
+                }
+
+                // All apps drawer header
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 32.dp, end = 32.dp, top = 16.dp, bottom = 16.dp)
+                    ) {
+                        Text(
+                            text = "ALL APPS (A-Z)",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 1.5.sp
                         )
+                    }
+                }
+
+                // Grid of all apps sorted alphabetically
+                item {
+                    val rowCount = (sortedApps.size + 4) / 5
+                    val gridHeight = (rowCount * 110).dp
+
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(5),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(gridHeight)
+                            .padding(horizontal = 32.dp),
+                        userScrollEnabled = false
+                    ) {
+                        itemsIndexed(sortedApps) { index, app ->
+                            AppTile(
+                                app = app,
+                                width = 140.dp,
+                                height = 90.dp,
+                                onFocused = { focusedIndex = index % 7 },
+                                onClick = { launchApp(app.packageName) }
+                            )
+                        }
                     }
                 }
             }
@@ -268,13 +348,11 @@ fun GloopMascot(
             val pupilShift = pupilOffsetX.dp.toPx()
             val lookDownY = 3.dp.toPx()
 
-            // Left Eye Sclera
             drawOval(
                 color = Color.White,
                 topLeft = Offset(size.width * 0.33f - eyeWidth, size.height * 0.40f - eyeHeight),
                 size = Size(eyeWidth * 2, eyeHeight * 2)
             )
-            // Left Pupil
             if (blinkProgress > 0.35f) {
                 drawCircle(
                     color = Color.Black,
@@ -283,13 +361,11 @@ fun GloopMascot(
                 )
             }
 
-            // Right Eye Sclera
             drawOval(
                 color = Color.White,
                 topLeft = Offset(size.width * 0.67f - eyeWidth, size.height * 0.40f - eyeHeight),
                 size = Size(eyeWidth * 2, eyeHeight * 2)
             )
-            // Right Pupil
             if (blinkProgress > 0.35f) {
                 drawCircle(
                     color = Color.Black,
@@ -298,7 +374,6 @@ fun GloopMascot(
                 )
             }
 
-            // Mouth
             val isPopping = popScale.value > 1.05f
             if (isPopping) {
                 drawOval(
@@ -322,8 +397,10 @@ fun GloopMascot(
 }
 
 @Composable
-fun AppDockTile(
+fun AppTile(
     app: AppModel,
+    width: androidx.compose.ui.unit.Dp,
+    height: androidx.compose.ui.unit.Dp,
     onFocused: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -348,7 +425,7 @@ fun AppDockTile(
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(width = 150.dp, height = 96.dp)
+            .size(width = width, height = height)
             .scale(scale)
             .background(backgroundColor, RoundedCornerShape(16.dp))
             .focusable(interactionSource = interactionSource)
