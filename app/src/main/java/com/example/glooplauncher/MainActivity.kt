@@ -21,7 +21,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,8 +45,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -180,8 +177,10 @@ fun GloopTVApp() {
             }
         }
 
-        val sessionListener = MediaSessionManager.OnActiveSessionsChangedListener { _ ->
-            pollActiveSessions()
+        val sessionListener = object : MediaSessionManager.OnActiveSessionsChangedListener {
+            override fun onActiveSessionsChanged(controllers: MutableList<MediaController>?) {
+                pollActiveSessions()
+            }
         }
 
         try {
@@ -435,36 +434,39 @@ fun NowPlayingBar(
 
         Spacer(modifier = Modifier.width(16.dp))
 
+        // Play/Pause Action Indicator
         Box(
+            contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(32.dp)
                 .clip(CircleShape)
                 .background(Color(0xFF334155))
         ) {
-            Canvas(
-                modifier = Modifier
-                    .size(14.dp)
-                    .padding(2.dp)
-            ) {
-                if (media.isPlaying) {
-                    drawRect(
-                        color = Color.White,
-                        topLeft = Offset(0f, 0f),
-                        size = Size(3.dp.toPx(), size.height)
+            if (media.isPlaying) {
+                // Pause Bars
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 3.dp, height = 12.dp)
+                            .background(Color.White, RoundedCornerShape(1.dp))
                     )
-                    drawRect(
-                        color = Color.White,
-                        topLeft = Offset(7.dp.toPx(), 0f),
-                        size = Size(3.dp.toPx(), size.height)
+                    Box(
+                        modifier = Modifier
+                            .size(width = 3.dp, height = 12.dp)
+                            .background(Color.White, RoundedCornerShape(1.dp))
                     )
-                } else {
-                    val p1 = Offset(2.dp.toPx(), 0f)
-                    val p2 = Offset(size.width, size.height / 2f)
-                    val p3 = Offset(2.dp.toPx(), size.height)
-                    drawLine(Color.White, p1, p2, 3.dp.toPx())
-                    drawLine(Color.White, p2, p3, 3.dp.toPx())
-                    drawLine(Color.White, p3, p1, 3.dp.toPx())
                 }
+            } else {
+                // Play indicator (Text triangle glyph avoids canvas line float mismatch)
+                Text(
+                    text = "▶",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(start = 2.dp)
+                )
             }
         }
     }
@@ -522,7 +524,4 @@ fun AppIconTile(
                 }
             }
             .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {
-      
+         
