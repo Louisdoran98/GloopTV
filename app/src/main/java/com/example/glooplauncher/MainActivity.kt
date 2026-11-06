@@ -1,13 +1,10 @@
 package com.example.glooplauncher
 
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ResolveInfo
-import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
-import android.media.MediaMetadata
-import android.media.session.PlaybackState
+import android.media.AudioManager
 import android.os.Bundle
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.ComponentActivity
@@ -79,14 +76,6 @@ data class AppModel(
     val icon: Drawable? = null
 )
 
-data class MediaTrackInfo(
-    val title: String,
-    val artist: String,
-    val art: Bitmap? = null,
-    val isPlaying: Boolean = false,
-    val onPlayPause: () -> Unit = {}
-)
-
 @Composable
 fun GloopTVApp() {
     val context = LocalContext.current
@@ -137,71 +126,18 @@ fun GloopTVApp() {
         (matchedFavorites + fallbackApps).take(6)
     }
 
-    var activeMedia by remember { mutableStateOf<MediaTrackInfo?>(null) }
+    val activeMedia by GloopMediaListenerService.currentMedia.collectAsState()
 
+    var isSystemMusicPlaying by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        val sessionService = context.getSystemService(Context.MEDIA_SESSION_SERVICE)
-        val listenerComponent = ComponentName(context, GloopMediaListenerService::class.java)
-
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         while (true) {
-            try {
-                if (sessionService != null) {
-                    val getSessionsMethod = sessionService.javaClass.getMethod(
-                        "getActiveSessions",
-                        ComponentName::class.java
-                    )
-                    val rawControllers = getSessionsMethod.invoke(sessionService, listenerComponent) as? List<*>
-
-                    var resolvedInfo: MediaTrackInfo? = null
-
-                    if (!rawControllers.isNullOrEmpty()) {
-                        for (raw in rawControllers) {
-                            if (raw == null) continue
-                            val getPlaybackStateMethod = raw.javaClass.getMethod("getPlaybackState")
-                            val playbackState = getPlaybackStateMethod.invoke(raw) as? PlaybackState
-                            val isPlaying = playbackState?.state == PlaybackState.STATE_PLAYING
-                            val isPaused = playbackState?.state == PlaybackState.STATE_PAUSED
-
-                            if (isPlaying || isPaused) {
-                                val getMetadataMethod = raw.javaClass.getMethod("getMetadata")
-                                val metadata = getMetadataMethod.invoke(raw) as? MediaMetadata
-                                val title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
-                                val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
-                                val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                                    ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-
-                                if (!title.isNullOrEmpty()) {
-                                    val getControlsMethod = raw.javaClass.getMethod("getTransportControls")
-                                    val transportControls = getControlsMethod.invoke(raw)
-
-                                    resolvedInfo = MediaTrackInfo(
-                                        title = title,
-                                        artist = artist,
-                                        art = art,
-                                        isPlaying = isPlaying,
-                                        onPlayPause = {
-                                            try {
-                                                if (isPlaying) {
-                                                    transportControls.javaClass.getMethod("pause").invoke(transportControls)
-                                                } else {
-                                                    transportControls.javaClass.getMethod("play").invoke(transportControls)
-                                                }
-                                            } catch (e: Exception) {}
-                                        }
-                                    )
-                                    break
-                                }
-                            }
-                        }
-                    }
-                    activeMedia = resolvedInfo
-                }
-            } catch (e: Exception) {
-                activeMedia = null
-            }
-            delay(1500)
+            isSystemMusicPlaying = audioManager?.isMusicActive == true
+            delay(1200)
         }
     }
+
+    val isDancing = activeMedia?.isPlaying == true || isSystemMusicPlaying
 
     var isDrawerOpen by remember { mutableStateOf(false) }
     var focusedIndex by remember { mutableIntStateOf(0) }
@@ -251,7 +187,7 @@ fun GloopTVApp() {
                     GloopMascot(
                         eyeTargetRatio = eyeTargetRatio,
                         popTrigger = popTrigger,
-                        isDancing = activeMedia?.isPlaying == true
+                        isDancing = isDancing
                     )
                 }
 
@@ -263,7 +199,15 @@ fun GloopTVApp() {
                     activeMedia?.let { media ->
                         NowPlayingBar(
                             media = media,
-                            onTogglePlayPause = { media.onPlayPause() },
+                            onTogglePlayPause = {
+                                try {
+                                    if (media.isPlaying) {
+                                        media.controller?.transportControls?.pause()
+                                    } else {
+                                        media.controller?.transportControls?.play()
+                                    }
+                                } catch (e: Exception) {}
+                            },
                             modifier = Modifier.padding(bottom = 14.dp, start = 4.dp)
                         )
                     }
@@ -365,7 +309,7 @@ fun GloopTVApp() {
 
 @Composable
 fun NowPlayingBar(
-    media: MediaTrackInfo,
+    media: ActiveMediaState,
     onTogglePlayPause: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -504,4 +448,67 @@ fun AppIconTile(
             .scale(scale)
             .clip(RoundedCornerShape(14.dp))
             .background(Color(0xFF1E293B))
-            .border(3.dp, borderColor, RoundedCornerShape(14.dp
+            .border(3.dp, borderColor, RoundedCornerShape(14.dp))
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusable(interactionSource = interactionSource)
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown && onKeyCode != null) {
+                    onKeyCode(keyEvent.nativeKeyEvent.keyCode)
+                } else {
+                    false
+                }
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    onFocused()
+                    onClick()
+                }
+            )
+    ) {
+        if (appBitmap != null) {
+            Image(
+                bitmap = appBitmap,
+                contentDescription = app.label,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+@Composable
+fun ClockHeader(modifier: Modifier = Modifier) {
+    var currentTime by remember { mutableStateOf("") }
+    var currentDayAndDate by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val dayDateFormat = SimpleDateFormat("EEEE, d MMMM", Locale.getDefault())
+        while (true) {
+            val now = Date()
+            currentTime = timeFormat.format(now)
+            currentDayAndDate = dayDateFormat.format(now)
+            delay(1000)
+        }
+    }
+
+    Column(modifier = modifier) {
+        Text(
+            text = currentTime,
+            color = Color.White,
+            fontSize = 42.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.5).sp
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = currentDayAndDate,
+            color = Color(0xFF94A3B8),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
+            letterSpacing = 0.2.sp
+        )
+    }
+}
