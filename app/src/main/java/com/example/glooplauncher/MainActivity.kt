@@ -182,7 +182,7 @@ fun GloopTVApp() {
             }
         }
 
-        val sessionListener = MediaSessionManager.OnActiveSessionsChangedListener {
+        val sessionListener = MediaSessionManager.OnActiveSessionsChangedListener { _ ->
             pollActiveSessions()
         }
 
@@ -446,26 +446,26 @@ fun NowPlayingBar(
             Canvas(
                 modifier = Modifier
                     .size(14.dp)
-                    .padding(1.dp)
+                    .padding(2.dp)
             ) {
                 if (media.isPlaying) {
                     drawRect(
                         color = Color.White,
-                        topLeft = Offset(1.dp.toPx(), 1.dp.toPx()),
-                        size = Size(3.5.dp.toPx(), 12.dp.toPx())
+                        topLeft = Offset(0f, 0f),
+                        size = Size(3.dp.toPx(), size.height)
                     )
                     drawRect(
                         color = Color.White,
-                        topLeft = Offset(9.dp.toPx(), 1.dp.toPx()),
-                        size = Size(3.5.dp.toPx(), 12.dp.toPx())
+                        topLeft = Offset(7.dp.toPx(), 0f),
+                        size = Size(3.dp.toPx(), size.height)
                     )
                 } else {
-                    val p1 = Offset(3.dp.toPx(), 1.dp.toPx())
-                    val p2 = Offset(13.dp.toPx(), 7.dp.toPx())
-                    val p3 = Offset(3.dp.toPx(), 13.dp.toPx())
-                    drawLine(Color.White, p1, p2, strokeWidth = 3.dp.toPx())
-                    drawLine(Color.White, p2, p3, strokeWidth = 3.dp.toPx())
-                    drawLine(Color.White, p3, p1, strokeWidth = 3.dp.toPx())
+                    val p1 = Offset(2.dp.toPx(), 0f)
+                    val p2 = Offset(size.width, size.height / 2f)
+                    val p3 = Offset(2.dp.toPx(), size.height)
+                    drawLine(Color.White, p1, p2, 3.dp.toPx())
+                    drawLine(Color.White, p2, p3, 3.dp.toPx())
+                    drawLine(Color.White, p3, p1, 3.dp.toPx())
                 }
             }
         }
@@ -521,4 +521,7 @@ fun AppIconTile(
                     onKeyCode(keyEvent.nativeKeyEvent.keyCode)
                 } else {
                     false
-           
+                }
+            }
+            .clickable(
+                interactionSourc
