@@ -1,4 +1,4 @@
-package com.example.glooplauncher 
+package com.example.glooplauncher
 
 import android.content.ComponentName
 import android.content.Context
@@ -7,8 +7,6 @@ import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 import android.media.MediaMetadata
-import android.media.session.MediaController
-import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.Bundle
 import android.view.KeyEvent as AndroidKeyEvent
@@ -21,6 +19,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -45,6 +44,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -83,7 +84,7 @@ data class MediaTrackInfo(
     val artist: String,
     val art: Bitmap? = null,
     val isPlaying: Boolean = false,
-    val controller: MediaController? = null
+    val onPlayPause: () -> Unit = {}
 )
 
 @Composable
@@ -139,45 +140,61 @@ fun GloopTVApp() {
     var activeMedia by remember { mutableStateOf<MediaTrackInfo?>(null) }
 
     LaunchedEffect(Unit) {
-        val sessionManager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
+        val sessionService = context.getSystemService(Context.MEDIA_SESSION_SERVICE)
         val listenerComponent = ComponentName(context, GloopMediaListenerService::class.java)
 
         while (true) {
             try {
-                if (sessionManager != null) {
-                    val method = sessionManager.javaClass.getMethod("getActiveSessions", ComponentName::class.java)
-                    @Suppress("UNCHECKED_CAST")
-                    val controllers = method.invoke(sessionManager, listenerComponent) as? List<MediaController>
+                if (sessionService != null) {
+                    val getSessionsMethod = sessionService.javaClass.getMethod(
+                        "getActiveSessions",
+                        ComponentName::class.java
+                    )
+                    val rawControllers = getSessionsMethod.invoke(sessionService, listenerComponent) as? List<*>
 
-                    val targetController = controllers?.firstOrNull {
-                        val state = it.playbackState?.state
-                        state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_PAUSED
-                    } ?: controllers?.firstOrNull()
+                    var resolvedInfo: MediaTrackInfo? = null
 
-                    if (targetController != null) {
-                        val metadata = targetController.metadata
-                        val playbackState = targetController.playbackState
-                        val isPlaying = playbackState?.state == PlaybackState.STATE_PLAYING
+                    if (!rawControllers.isNullOrEmpty()) {
+                        for (raw in rawControllers) {
+                            if (raw == null) continue
+                            val getPlaybackStateMethod = raw.javaClass.getMethod("getPlaybackState")
+                            val playbackState = getPlaybackStateMethod.invoke(raw) as? PlaybackState
+                            val isPlaying = playbackState?.state == PlaybackState.STATE_PLAYING
+                            val isPaused = playbackState?.state == PlaybackState.STATE_PAUSED
 
-                        val title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
-                        val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
-                        val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                            if (isPlaying || isPaused) {
+                                val getMetadataMethod = raw.javaClass.getMethod("getMetadata")
+                                val metadata = getMetadataMethod.invoke(raw) as? MediaMetadata
+                                val title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+                                val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
+                                val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                                    ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
 
-                        if (!title.isNullOrEmpty()) {
-                            activeMedia = MediaTrackInfo(
-                                title = title,
-                                artist = artist,
-                                art = art,
-                                isPlaying = isPlaying,
-                                controller = targetController
-                            )
-                        } else {
-                            activeMedia = null
+                                if (!title.isNullOrEmpty()) {
+                                    val getControlsMethod = raw.javaClass.getMethod("getTransportControls")
+                                    val transportControls = getControlsMethod.invoke(raw)
+
+                                    resolvedInfo = MediaTrackInfo(
+                                        title = title,
+                                        artist = artist,
+                                        art = art,
+                                        isPlaying = isPlaying,
+                                        onPlayPause = {
+                                            try {
+                                                if (isPlaying) {
+                                                    transportControls.javaClass.getMethod("pause").invoke(transportControls)
+                                                } else {
+                                                    transportControls.javaClass.getMethod("play").invoke(transportControls)
+                                                }
+                                            } catch (e: Exception) {}
+                                        }
+                                    )
+                                    break
+                                }
+                            }
                         }
-                    } else {
-                        activeMedia = null
                     }
+                    activeMedia = resolvedInfo
                 }
             } catch (e: Exception) {
                 activeMedia = null
@@ -246,13 +263,7 @@ fun GloopTVApp() {
                     activeMedia?.let { media ->
                         NowPlayingBar(
                             media = media,
-                            onTogglePlayPause = {
-                                if (media.isPlaying) {
-                                    media.controller?.transportControls?.pause()
-                                } else {
-                                    media.controller?.transportControls?.play()
-                                }
-                            },
+                            onTogglePlayPause = { media.onPlayPause() },
                             modifier = Modifier.padding(bottom = 14.dp, start = 4.dp)
                         )
                     }
@@ -440,12 +451,13 @@ fun NowPlayingBar(
                     )
                 }
             } else {
-                Text(
-                    text = "▶",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(start = 2.dp)
-                )
+                Canvas(modifier = Modifier.size(10.dp)) {
+                    drawRect(
+                        color = Color.White,
+                        topLeft = Offset(0f, 0f),
+                        size = Size(size.width, size.height)
+                    )
+                }
             }
         }
     }
@@ -492,35 +504,4 @@ fun AppIconTile(
             .scale(scale)
             .clip(RoundedCornerShape(14.dp))
             .background(Color(0xFF1E293B))
-            .border(3.dp, borderColor, RoundedCornerShape(14.dp))
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .focusable(interactionSource = interactionSource)
-            .onKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown && onKeyCode != null) {
-                    onKeyCode(keyEvent.nativeKeyEvent.keyCode)
-                } else {
-                    false
-                }
-            }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {
-                    onFocused()
-                    onClick()
-                }
-            )
-    ) {
-        if (appBitmap != null) {
-            Image(
-                bitmap = appBitmap,
-                contentDescription = app.label,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-    }
-}
-
-@Composable
-fun ClockHeader(
+            .border(3.dp, borderColor, RoundedCornerShape(14.dp
