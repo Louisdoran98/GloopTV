@@ -178,7 +178,7 @@ fun GloopTVApp() {
                     activeMedia = null
                 }
             } catch (e: Exception) {
-                // Ignore until notification permission is granted
+                // If notification access isn't enabled yet
             }
         }
 
@@ -438,13 +438,16 @@ fun NowPlayingBar(
         Spacer(modifier = Modifier.width(16.dp))
 
         Box(
-            contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(32.dp)
                 .clip(CircleShape)
                 .background(Color(0xFF334155))
         ) {
-            Canvas(modifier = Modifier.size(14.dp)) {
+            Canvas(
+                modifier = Modifier
+                    .size(14.dp)
+                    .align(Alignment.Center)
+            ) {
                 if (media.isPlaying) {
                     drawRect(
                         color = Color.White,
@@ -457,7 +460,6 @@ fun NowPlayingBar(
                         size = Size(3.5.dp.toPx(), 12.dp.toPx())
                     )
                 } else {
-                    // Triangle using 3 clean lines without any Path interface clashes
                     val p1 = Offset(3.dp.toPx(), 1.dp.toPx())
                     val p2 = Offset(13.dp.toPx(), 7.dp.toPx())
                     val p3 = Offset(3.dp.toPx(), 13.dp.toPx())
@@ -506,7 +508,6 @@ fun AppIconTile(
     }
 
     Box(
-        contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(width = width, height = height)
             .scale(scale)
@@ -516,4 +517,7 @@ fun AppIconTile(
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusable(interactionSource = interactionSource)
             .onKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown && onKeyCode != null) 
+                if (keyEvent.type == KeyEventType.KeyDown && onKeyCode != null) {
+                    onKeyCode(keyEvent.nativeKeyEvent.keyCode)
+                } else {
+  
