@@ -25,7 +25,8 @@ import androidx.compose.ui.unit.dp
 fun GloopMascot(
     eyeTargetRatio: Float,
     popTrigger: Int,
-    isDancing: Boolean = false
+    isDancing: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "mascotMotion")
     val animDuration = if (isDancing) 480 else 1400
@@ -93,7 +94,7 @@ fun GloopMascot(
 
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier
+        modifier = modifier
             .offset(y = idleOffsetY.dp)
             .rotate(idleRotation)
             .scale(scaleX = popScale.value, scaleY = popScale.value * danceScaleY)
