@@ -1,6 +1,5 @@
 package com.example.glooplauncher
 
-import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -87,7 +86,6 @@ data class MediaTrackInfo(
     val controller: MediaController? = null
 )
 
-@SuppressLint("MissingPermission")
 @Composable
 fun GloopTVApp() {
     val context = LocalContext.current
@@ -140,42 +138,46 @@ fun GloopTVApp() {
 
     var activeMedia by remember { mutableStateOf<MediaTrackInfo?>(null) }
 
-    // Safe, periodic media query that avoids strict permission compile checks
     LaunchedEffect(Unit) {
         val sessionManager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
         val listenerComponent = ComponentName(context, GloopMediaListenerService::class.java)
 
         while (true) {
             try {
-                val controllers = sessionManager?.getActiveSessions(listenerComponent)
-                val targetController = controllers?.firstOrNull {
-                    val state = it.playbackState?.state
-                    state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_PAUSED
-                } ?: controllers?.firstOrNull()
+                if (sessionManager != null) {
+                    val method = sessionManager.javaClass.getMethod("getActiveSessions", ComponentName::class.java)
+                    @Suppress("UNCHECKED_CAST")
+                    val controllers = method.invoke(sessionManager, listenerComponent) as? List<MediaController>
 
-                if (targetController != null) {
-                    val metadata = targetController.metadata
-                    val playbackState = targetController.playbackState
-                    val isPlaying = playbackState?.state == PlaybackState.STATE_PLAYING
+                    val targetController = controllers?.firstOrNull {
+                        val state = it.playbackState?.state
+                        state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_PAUSED
+                    } ?: controllers?.firstOrNull()
 
-                    val title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
-                    val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
-                    val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                        ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                    if (targetController != null) {
+                        val metadata = targetController.metadata
+                        val playbackState = targetController.playbackState
+                        val isPlaying = playbackState?.state == PlaybackState.STATE_PLAYING
 
-                    if (!title.isNullOrEmpty()) {
-                        activeMedia = MediaTrackInfo(
-                            title = title,
-                            artist = artist,
-                            art = art,
-                            isPlaying = isPlaying,
-                            controller = targetController
-                        )
+                        val title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+                        val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
+                        val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+
+                        if (!title.isNullOrEmpty()) {
+                            activeMedia = MediaTrackInfo(
+                                title = title,
+                                artist = artist,
+                                art = art,
+                                isPlaying = isPlaying,
+                                controller = targetController
+                            )
+                        } else {
+                            activeMedia = null
+                        }
                     } else {
                         activeMedia = null
                     }
-                } else {
-                    activeMedia = null
                 }
             } catch (e: Exception) {
                 activeMedia = null
@@ -522,9 +524,4 @@ fun AppIconTile(
 }
 
 @Composable
-fun ClockHeader(modifier: Modifier = Modifier) {
-    var currentTime by remember { mutableStateOf("") }
-    var currentDayAndDate by remember { mutableStateOf("") }
-
-    LaunchedEffect(Unit) {
-        val timeFormat = Sim
+fun ClockHeader
