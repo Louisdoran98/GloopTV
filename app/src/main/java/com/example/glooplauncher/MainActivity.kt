@@ -177,10 +177,8 @@ fun GloopTVApp() {
             }
         }
 
-        val sessionListener = object : MediaSessionManager.OnActiveSessionsChangedListener {
-            override fun onActiveSessionsChanged(controllers: MutableList<MediaController>?) {
-                pollActiveSessions()
-            }
+        val sessionListener = MediaSessionManager.OnActiveSessionsChangedListener { _ ->
+            pollActiveSessions()
         }
 
         try {
@@ -434,7 +432,6 @@ fun NowPlayingBar(
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // Play/Pause Action Indicator
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
@@ -443,7 +440,6 @@ fun NowPlayingBar(
                 .background(Color(0xFF334155))
         ) {
             if (media.isPlaying) {
-                // Pause Bars
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(3.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -460,7 +456,6 @@ fun NowPlayingBar(
                     )
                 }
             } else {
-                // Play indicator (Text triangle glyph avoids canvas line float mismatch)
                 Text(
                     text = "▶",
                     color = Color.White,
@@ -524,4 +519,14 @@ fun AppIconTile(
                 }
             }
             .clickable(
-         
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    onFocused()
+                    onClick()
+                }
+            )
+    ) {
+        if (appBitmap != null) {
+            Image(
+             
