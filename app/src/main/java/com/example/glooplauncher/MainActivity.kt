@@ -179,7 +179,7 @@ fun GloopTVApp() {
                     activeMedia = null
                 }
             } catch (e: Exception) {
-                // If permission is not granted yet
+                // If notification permission not granted yet
             }
         }
 
@@ -410,7 +410,10 @@ fun NowPlayingBar(
             Spacer(modifier = Modifier.width(12.dp))
         }
 
-        Column(modifier = Modifier.widthIn(max = 240.dp)) {
+        Column(
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.widthIn(max = 240.dp)
+        ) {
             Text(
                 text = media.title,
                 color = Color.White,
@@ -517,7 +520,4 @@ fun AppIconTile(
                 }
             }
             .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {
-             
+                interactionSource = interacti
