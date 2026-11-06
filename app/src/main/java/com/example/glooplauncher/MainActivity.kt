@@ -179,7 +179,7 @@ fun GloopTVApp() {
                     activeMedia = null
                 }
             } catch (e: Exception) {
-                // In case notification access is not granted yet
+                // If permission is not granted yet
             }
         }
 
@@ -299,7 +299,9 @@ fun GloopTVApp() {
                                             drawerFirstItemFocusRequester.requestFocus()
                                         }
                                         true
-                                    } else false
+                                    } else {
+                                        false
+                                    }
                                 }
                             )
                         }
@@ -358,7 +360,9 @@ fun GloopTVApp() {
                                             homeFirstItemFocusRequester.requestFocus()
                                         }
                                         true
-                                    } else false
+                                    } else {
+                                        false
+                                    }
                                 }
                             )
                         }
@@ -516,11 +520,4 @@ fun AppIconTile(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = {
-                    onFocused()
-                    onClick()
-                }
-            )
-    ) {
-        if (appBitmap != null) {
-            Image(
-     
+             
