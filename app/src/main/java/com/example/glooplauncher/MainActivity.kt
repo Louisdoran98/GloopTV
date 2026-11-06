@@ -142,7 +142,6 @@ fun GloopTVApp() {
         (matchedFavorites + fallbackApps).take(6)
     }
 
-    // Live MediaSession listener to pick up Spotify
     var activeMedia by remember { mutableStateOf<MediaTrackInfo?>(null) }
 
     DisposableEffect(Unit) {
@@ -180,7 +179,7 @@ fun GloopTVApp() {
                     activeMedia = null
                 }
             } catch (e: Exception) {
-                // If permission isn't granted yet, ignore safely
+                // In case notification access is not granted yet
             }
         }
 
@@ -193,7 +192,6 @@ fun GloopTVApp() {
             pollActiveSessions()
         } catch (e: Exception) {}
 
-        // Poll every 1.5s as fallback for apps that don't trigger callback events immediately
         val job = coroutineScope.launch {
             while (true) {
                 pollActiveSessions()
@@ -247,7 +245,6 @@ fun GloopTVApp() {
                         .padding(top = 8.dp, start = 8.dp)
                 )
 
-                // Mascot in top-right (Dances when Spotify is playing)
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -262,13 +259,11 @@ fun GloopTVApp() {
                     )
                 }
 
-                // Bottom Section: Media Bar + 6 Favorites Dock
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
                 ) {
-                    // Spotify Floating Bar
                     activeMedia?.let { media ->
                         NowPlayingBar(
                             media = media,
@@ -283,7 +278,6 @@ fun GloopTVApp() {
                         )
                     }
 
-                    // 6 Favorites Dock: Images fill the tile with subtle crop to rounded corners
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(18.dp),
@@ -313,7 +307,6 @@ fun GloopTVApp() {
                 }
             }
 
-            // Slide-Up App Drawer Overlay
             AnimatedVisibility(
                 visible = isDrawerOpen,
                 enter = slideInVertically(
@@ -513,4 +506,21 @@ fun AppIconTile(
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusable(interactionSource = interactionSource)
             .onKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown &&
+                if (keyEvent.type == KeyEventType.KeyDown && onKeyCode != null) {
+                    onKeyCode(keyEvent.nativeKeyEvent.keyCode)
+                } else {
+                    false
+                }
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    onFocused()
+                    onClick()
+                }
+            )
+    ) {
+        if (appBitmap != null) {
+            Image(
+     
