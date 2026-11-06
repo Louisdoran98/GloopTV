@@ -51,7 +51,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.*
@@ -384,6 +383,10 @@ fun NowPlayingBar(
 
     val borderColor = if (isFocused) Color(0xFF10B981) else Color(0x33FFFFFF)
 
+    val albumArtBitmap = remember(media.art) {
+        media.art?.asImageBitmap()
+    }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
@@ -398,9 +401,9 @@ fun NowPlayingBar(
             )
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
-        if (media.art != null) {
+        if (albumArtBitmap != null) {
             Image(
-                bitmap = media.art.asImageBitmap(),
+                bitmap = albumArtBitmap,
                 contentDescription = "Album Art",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -454,13 +457,13 @@ fun NowPlayingBar(
                         size = Size(3.5.dp.toPx(), 12.dp.toPx())
                     )
                 } else {
-                    val path = Path().apply {
+                    val p = androidx.compose.ui.graphics.Path().apply {
                         moveTo(2.dp.toPx(), 1.dp.toPx())
                         lineTo(13.dp.toPx(), 7.dp.toPx())
                         lineTo(2.dp.toPx(), 13.dp.toPx())
                         close()
                     }
-                    drawPath(path = path, color = Color.White)
+                    drawPath(path = p, color = Color.White)
                 }
             }
         }
@@ -519,5 +522,4 @@ fun AppIconTile(
                     false
                 }
             }
-            .clickable(
-                interactionSource = interacti
+    
