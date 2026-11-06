@@ -178,7 +178,7 @@ fun GloopTVApp() {
                     activeMedia = null
                 }
             } catch (e: Exception) {
-                // If notification access isn't enabled yet
+                activeMedia = null
             }
         }
 
@@ -446,7 +446,7 @@ fun NowPlayingBar(
             Canvas(
                 modifier = Modifier
                     .size(14.dp)
-                    .align(Alignment.Center)
+                    .padding(1.dp)
             ) {
                 if (media.isPlaying) {
                     drawRect(
@@ -520,4 +520,5 @@ fun AppIconTile(
                 if (keyEvent.type == KeyEventType.KeyDown && onKeyCode != null) {
                     onKeyCode(keyEvent.nativeKeyEvent.keyCode)
                 } else {
-  
+                    false
+           
