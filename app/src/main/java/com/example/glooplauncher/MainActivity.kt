@@ -38,6 +38,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -46,11 +47,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -126,18 +127,14 @@ fun GloopTVApp() {
         (matchedFavorites + fallbackApps).take(6)
     }
 
-    val activeMedia by GloopMediaListenerService.currentMedia.collectAsState()
-
-    var isSystemMusicPlaying by remember { mutableStateOf(false) }
+    var isMusicPlaying by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         while (true) {
-            isSystemMusicPlaying = audioManager?.isMusicActive == true
-            delay(1200)
+            isMusicPlaying = audioManager?.isMusicActive == true
+            delay(1000)
         }
     }
-
-    val isDancing = activeMedia?.isPlaying == true || isSystemMusicPlaying
 
     var isDrawerOpen by remember { mutableStateOf(false) }
     var focusedIndex by remember { mutableIntStateOf(0) }
@@ -187,7 +184,7 @@ fun GloopTVApp() {
                     GloopMascot(
                         eyeTargetRatio = eyeTargetRatio,
                         popTrigger = popTrigger,
-                        isDancing = isDancing
+                        isDancing = isMusicPlaying
                     )
                 }
 
@@ -196,20 +193,30 @@ fun GloopTVApp() {
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
                 ) {
-                    activeMedia?.let { media ->
-                        NowPlayingBar(
-                            media = media,
-                            onTogglePlayPause = {
-                                try {
-                                    if (media.isPlaying) {
-                                        media.controller?.transportControls?.pause()
-                                    } else {
-                                        media.controller?.transportControls?.play()
-                                    }
-                                } catch (e: Exception) {}
-                            },
-                            modifier = Modifier.padding(bottom = 14.dp, start = 4.dp)
-                        )
+                    if (isMusicPlaying) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .padding(bottom = 14.dp, start = 4.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xE61E293B))
+                                .border(2.dp, Color(0xFF10B981), RoundedCornerShape(14.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981))
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Spotify Audio Active",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
 
                     LazyRow(
@@ -301,106 +308,6 @@ fun GloopTVApp() {
                             )
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun NowPlayingBar(
-    media: ActiveMediaState,
-    onTogglePlayPause: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-
-    val borderColor = if (isFocused) Color(0xFF10B981) else Color(0x33FFFFFF)
-    val albumArtBitmap = remember(media.art) {
-        media.art?.asImageBitmap()
-    }
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xE61E293B))
-            .border(2.dp, borderColor, RoundedCornerShape(14.dp))
-            .focusable(interactionSource = interactionSource)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onTogglePlayPause
-            )
-            .padding(horizontal = 14.dp, vertical = 8.dp)
-    ) {
-        if (albumArtBitmap != null) {
-            Image(
-                bitmap = albumArtBitmap,
-                contentDescription = "Album Art",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(8.dp))
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-        }
-
-        Column(
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.widthIn(max = 240.dp)
-        ) {
-            Text(
-                text = media.title,
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = media.artist,
-                color = Color(0xFF94A3B8),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF334155))
-        ) {
-            if (media.isPlaying) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(width = 3.dp, height = 12.dp)
-                            .background(Color.White, RoundedCornerShape(1.dp))
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(width = 3.dp, height = 12.dp)
-                            .background(Color.White, RoundedCornerShape(1.dp))
-                    )
-                }
-            } else {
-                Canvas(modifier = Modifier.size(10.dp)) {
-                    drawRect(
-                        color = Color.White,
-                        topLeft = Offset(0f, 0f),
-                        size = Size(size.width, size.height)
-                    )
                 }
             }
         }
@@ -512,3 +419,112 @@ fun ClockHeader(modifier: Modifier = Modifier) {
         )
     }
 }
+
+@Composable
+fun GloopMascot(
+    eyeTargetRatio: Float,
+    popTrigger: Int,
+    isDancing: Boolean = false
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "mascotMotion")
+    val animDuration = if (isDancing) 480 else 1400
+
+    val idleOffsetY by infiniteTransition.animateFloat(
+        initialValue = if (isDancing) -26f else -12f,
+        targetValue = if (isDancing) 18f else 12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(animDuration, easing = if (isDancing) FastOutLinearInEasing else EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "idleOffset"
+    )
+
+    val idleRotation by infiniteTransition.animateFloat(
+        initialValue = if (isDancing) -12f else -4f,
+        targetValue = if (isDancing) 12f else 4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (isDancing) animDuration * 2 else 1800, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "idleRotation"
+    )
+
+    val danceScaleY by infiniteTransition.animateFloat(
+        initialValue = if (isDancing) 0.88f else 1.0f,
+        targetValue = if (isDancing) 1.12f else 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(animDuration, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "danceScaleY"
+    )
+
+    val blinkProgress by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.05f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 3600
+                1f at 0
+                1f at 3400
+                0.05f at 3500
+                1f at 3600
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "blink"
+    )
+
+    val pupilOffsetX by animateFloatAsState(
+        targetValue = (eyeTargetRatio - 0.5f) * 10f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "pupilX"
+    )
+
+    val popScale = remember { Animatable(1f) }
+    LaunchedEffect(popTrigger) {
+        if (popTrigger > 0) {
+            popScale.animateTo(1.32f, animationSpec = tween(100, easing = FastOutLinearInEasing))
+            popScale.animateTo(0.85f, animationSpec = tween(90, easing = LinearOutSlowInEasing))
+            popScale.animateTo(1.0f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+        }
+    }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .offset(y = idleOffsetY.dp)
+            .rotate(idleRotation)
+            .scale(scaleX = popScale.value, scaleY = popScale.value * danceScaleY)
+            .size(130.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(110.dp)
+                .background(
+                    color = Color(0xFF10B981),
+                    shape = RoundedCornerShape(
+                        topStart = 48.dp,
+                        topEnd = 48.dp,
+                        bottomStart = 34.dp,
+                        bottomEnd = 34.dp
+                    )
+                )
+        )
+
+        Canvas(modifier = Modifier.size(100.dp)) {
+            val eyeWidth = 7.dp.toPx()
+            val eyeHeight = (7.dp.toPx()) * blinkProgress
+            val pupilShift = pupilOffsetX.dp.toPx()
+            val lookDownY = 3.dp.toPx()
+
+            drawOval(
+                color = Color.White,
+                topLeft = Offset(size.width * 0.33f - eyeWidth, size.height * 0.40f - eyeHeight),
+                size = Size(eyeWidth * 2, eyeHeight * 2)
+            )
+            if (blinkProgress > 0.35f) {
+                drawCircle(
+                    color = Color.Black,
+                    radius = eyeWidth * 0.52f,
+                    center = Offset(size.width * 0.33f + pupilShift, size.height * 
