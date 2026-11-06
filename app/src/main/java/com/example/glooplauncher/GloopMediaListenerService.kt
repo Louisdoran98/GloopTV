@@ -5,6 +5,7 @@ import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
+import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,9 +31,13 @@ class GloopMediaListenerService : NotificationListenerService() {
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        val token = sbn?.notification?.extras?.get(
-            android.app.Notification.EXTRA_MEDIA_SESSION
-        ) as? MediaSession.Token
+        val extras = sbn?.notification?.extras ?: return
+        val token = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            extras.getParcelable(android.app.Notification.EXTRA_MEDIA_SESSION, MediaSession.Token::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            extras.getParcelable(android.app.Notification.EXTRA_MEDIA_SESSION) as? MediaSession.Token
+        }
         if (token != null) {
             _currentMedia.value = null
         }
@@ -40,7 +45,12 @@ class GloopMediaListenerService : NotificationListenerService() {
 
     private fun updateMediaSession(sbn: StatusBarNotification?) {
         val extras = sbn?.notification?.extras ?: return
-        val token = extras.get(android.app.Notification.EXTRA_MEDIA_SESSION) as? MediaSession.Token ?: return
+        val token = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            extras.getParcelable(android.app.Notification.EXTRA_MEDIA_SESSION, MediaSession.Token::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            extras.getParcelable(android.app.Notification.EXTRA_MEDIA_SESSION) as? MediaSession.Token
+        } ?: return
 
         try {
             val controller = MediaController(this, token)
@@ -56,7 +66,6 @@ class GloopMediaListenerService : NotificationListenerService() {
                 ?: ""
             val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
                 ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-                ?: extras.getParcelable(android.app.Notification.EXTRA_LARGE_ICON)
 
             if (title.isNotEmpty()) {
                 _currentMedia.value = ActiveMediaState(
