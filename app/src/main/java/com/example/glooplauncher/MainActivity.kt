@@ -406,16 +406,14 @@ fun ClockHeader(modifier: Modifier = Modifier) {
             text = currentTime,
             color = Color.White,
             fontSize = 42.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = (-0.5).sp
+            fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = currentDayAndDate,
             color = Color(0xFF94A3B8),
             fontSize = 14.sp,
-            fontWeight = FontWeight.Normal,
-            letterSpacing = 0.2.sp
+            fontWeight = FontWeight.Normal
         )
     }
 }
@@ -463,13 +461,7 @@ fun GloopMascot(
         initialValue = 1f,
         targetValue = 0.05f,
         animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 3600
-                1f at 0
-                1f at 3400
-                0.05f at 3500
-                1f at 3600
-            },
+            animation = tween(3600, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "blink"
@@ -527,4 +519,11 @@ fun GloopMascot(
                 drawCircle(
                     color = Color.Black,
                     radius = eyeWidth * 0.52f,
-                    center = Offset(size.width * 0.33f + pupilShift, size.height * 
+                    center = Offset(size.width * 0.33f + pupilShift, size.height * 0.40f + lookDownY)
+                )
+            }
+
+            drawOval(
+                color = Color.White,
+                topLeft = Offset(size.width * 0.67f - eyeWidth, size.height * 0.40f - eyeHeight),
+   
