@@ -140,30 +140,4 @@ fun GloopMascot(
             )
             if (blinkProgress > 0.35f) {
                 drawCircle(
-                    color = Color.Black,
-                    radius = eyeWidth * 0.52f,
-                    center = Offset(size.width * 0.67f + pupilShift, size.height * 0.40f + lookDownY)
-                )
-            }
-
-            val isExcited = popScale.value > 1.05f || isDancing
-            if (isExcited) {
-                drawOval(
-                    color = Color(0xFF064E3B),
-                    topLeft = Offset(size.width * 0.41f, size.height * 0.54f),
-                    size = Size(size.width * 0.18f, size.height * 0.19f)
-                )
-            } else {
-                drawArc(
-                    color = Color(0xFF064E3B),
-                    startAngle = 15f,
-                    sweepAngle = 150f,
-                    useCenter = false,
-                    topLeft = Offset(size.width * 0.38f, size.height * 0.52f),
-                    size = Size(size.width * 0.24f, size.height * 0.16f),
-                    style = Stroke(width = 4.dp.toPx())
-                )
-            }
-        }
-    }
-}
+                    
