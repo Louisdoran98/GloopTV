@@ -178,7 +178,7 @@ fun GloopTVApp() {
                     activeMedia = null
                 }
             } catch (e: Exception) {
-                // If notification permission not granted yet
+                // Ignore until notification permission is granted
             }
         }
 
@@ -457,13 +457,13 @@ fun NowPlayingBar(
                         size = Size(3.5.dp.toPx(), 12.dp.toPx())
                     )
                 } else {
-                    val p = androidx.compose.ui.graphics.Path().apply {
-                        moveTo(2.dp.toPx(), 1.dp.toPx())
-                        lineTo(13.dp.toPx(), 7.dp.toPx())
-                        lineTo(2.dp.toPx(), 13.dp.toPx())
-                        close()
-                    }
-                    drawPath(path = p, color = Color.White)
+                    // Triangle using 3 clean lines without any Path interface clashes
+                    val p1 = Offset(3.dp.toPx(), 1.dp.toPx())
+                    val p2 = Offset(13.dp.toPx(), 7.dp.toPx())
+                    val p3 = Offset(3.dp.toPx(), 13.dp.toPx())
+                    drawLine(Color.White, p1, p2, strokeWidth = 3.dp.toPx())
+                    drawLine(Color.White, p2, p3, strokeWidth = 3.dp.toPx())
+                    drawLine(Color.White, p3, p1, strokeWidth = 3.dp.toPx())
                 }
             }
         }
@@ -516,10 +516,4 @@ fun AppIconTile(
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusable(interactionSource = interactionSource)
             .onKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown && onKeyCode != null) {
-                    onKeyCode(keyEvent.nativeKeyEvent.keyCode)
-                } else {
-                    false
-                }
-            }
-    
+                if (keyEvent.type == KeyEventType.KeyDown && onKeyCode != null) 
