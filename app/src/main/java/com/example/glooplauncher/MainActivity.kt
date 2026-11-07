@@ -1,16 +1,20 @@
 package com.example.glooplauncher
 
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
+import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaController
-import android.media.session.MediaSessionManager
+import android.media.session.MediaSession
 import android.media.session.PlaybackState
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import android.service.notification.NotificationListenerService
+import android.service.notification.StatusBarNotification
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -62,11 +66,74 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+
+data class ActivePlayback(
+    val title: String = "",
+    val artist: String = "",
+    val art: Bitmap? = null,
+    val isPlaying: Boolean = false,
+    val controller: MediaController? = null
+)
+
+class GloopNotificationListener : NotificationListenerService() {
+    companion object {
+        private val _currentMedia = MutableStateFlow<ActivePlayback?>(null)
+        val currentMedia = _currentMedia.asStateFlow()
+    }
+
+    override fun onNotificationPosted(sbn: StatusBarNotification?) {
+        updateMedia(sbn)
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        val extras = sbn?.notification?.extras ?: return
+        val hasSession = extras.containsKey(android.app.Notification.EXTRA_MEDIA_SESSION)
+        if (hasSession) {
+            _currentMedia.value = null
+        }
+    }
+
+    private fun updateMedia(sbn: StatusBarNotification?) {
+        val extras = sbn?.notification?.extras ?: return
+        val token = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            extras.getParcelable(android.app.Notification.EXTRA_MEDIA_SESSION, MediaSession.Token::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            extras.getParcelable(android.app.Notification.EXTRA_MEDIA_SESSION) as? MediaSession.Token
+        } ?: return
+
+        try {
+            val controller = MediaController(this, token)
+            val metadata = controller.metadata
+            val playbackState = controller.playbackState
+
+            val isPlaying = playbackState?.state == PlaybackState.STATE_PLAYING
+            val title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+                ?: extras.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString()
+                ?: "Spotify Playback"
+            val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST)
+                ?: extras.getCharSequence(android.app.Notification.EXTRA_TEXT)?.toString()
+                ?: ""
+            val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+
+            _currentMedia.value = ActivePlayback(
+                title = title,
+                artist = artist,
+                art = art,
+                isPlaying = isPlaying,
+                controller = controller
+            )
+        } catch (e: Exception) {}
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,16 +148,6 @@ data class AppModel(
     val label: String,
     val packageName: String,
     val icon: Drawable? = null
-)
-
-data class TrackInfo(
-    val title: String,
-    val artist: String,
-    val art: Bitmap? = null,
-    val isPlaying: Boolean = false,
-    val onPlayPause: () -> Unit = {},
-    val onSkipNext: () -> Unit = {},
-    val onSkipPrev: () -> Unit = {}
 )
 
 enum class HatType {
@@ -157,86 +214,28 @@ fun GloopTVApp() {
         (matchedFavorites + fallbackApps).take(5)
     }
 
-    var activeTrack by remember { mutableStateOf<TrackInfo?>(null) }
+    val activePlayback by GloopNotificationListener.currentMedia.collectAsState()
+
+    var isAudioActive by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        val sessionManager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         while (true) {
-            try {
-                if (sessionManager != null) {
-                    val getActiveMethod = sessionManager.javaClass.getMethod(
-                        "getActiveSessions",
-                        ComponentName::class.java
-                    )
-                    val rawList = getActiveMethod.invoke(sessionManager, null) as? List<*>
-                    var foundTrack: TrackInfo? = null
-
-                    if (!rawList.isNullOrEmpty()) {
-                        for (item in rawList) {
-                            if (item == null) continue
-                            val getPlaybackState = item.javaClass.getMethod("getPlaybackState")
-                            val state = getPlaybackState.invoke(item) as? PlaybackState
-                            val isPlaying = state?.state == PlaybackState.STATE_PLAYING
-                            val isPaused = state?.state == PlaybackState.STATE_PAUSED
-
-                            if (isPlaying || isPaused) {
-                                val getMetadata = item.javaClass.getMethod("getMetadata")
-                                val metadata = getMetadata.invoke(item) as? MediaMetadata
-                                val title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: ""
-                                val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
-                                val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                                    ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-
-                                val getControls = item.javaClass.getMethod("getTransportControls")
-                                val controls = getControls.invoke(item)
-
-                                foundTrack = TrackInfo(
-                                    title = if (title.isNotEmpty()) title else "Spotify Playback",
-                                    artist = artist,
-                                    art = art,
-                                    isPlaying = isPlaying,
-                                    onPlayPause = {
-                                        try {
-                                            if (isPlaying) {
-                                                controls.javaClass.getMethod("pause").invoke(controls)
-                                            } else {
-                                                controls.javaClass.getMethod("play").invoke(controls)
-                                            }
-                                        } catch (e: Exception) {}
-                                    },
-                                    onSkipNext = {
-                                        try {
-                                            controls.javaClass.getMethod("skipToNext").invoke(controls)
-                                        } catch (e: Exception) {}
-                                    },
-                                    onSkipPrev = {
-                                        try {
-                                            controls.javaClass.getMethod("skipToPrevious").invoke(controls)
-                                        } catch (e: Exception) {}
-                                    }
-                                )
-                                break
-                            }
-                        }
-                    }
-                    activeTrack = foundTrack
-                }
-            } catch (e: Exception) {
-                activeTrack = null
-            }
-            delay(1500)
+            isAudioActive = audioManager?.isMusicActive == true
+            delay(1000)
         }
     }
 
-    // Hat and sleep state logic
+    val isMusicPlaying = activePlayback?.isPlaying == true || isAudioActive
+
     var currentHat by remember { mutableStateOf(HatType.NONE) }
     var isSleeping by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         while (true) {
             val cal = Calendar.getInstance()
-            val month = cal.get(Calendar.MONTH) // 0-based: Jan=0, May=4, Nov=10, Dec=11
+            val month = cal.get(Calendar.MONTH)
             val day = cal.get(Calendar.DAY_OF_MONTH)
-            val hour = cal.get(Calendar.HOUR_OF_DAY) // 24-hr format
+            val hour = cal.get(Calendar.HOUR_OF_DAY)
 
             val nightTime = hour >= 21 || hour < 6
             isSleeping = nightTime
@@ -300,7 +299,7 @@ fun GloopTVApp() {
                     GloopMascot(
                         eyeTargetRatio = eyeTargetRatio,
                         popTrigger = popTrigger,
-                        isDancing = activeTrack?.isPlaying == true && !isSleeping,
+                        isDancing = isMusicPlaying && !isSleeping,
                         hatType = currentHat,
                         isSleeping = isSleeping
                     )
@@ -311,11 +310,40 @@ fun GloopTVApp() {
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                 ) {
-                    activeTrack?.let { track ->
+                    if (activePlayback != null) {
                         NowPlayingWidget(
-                            track = track,
+                            playback = activePlayback!!,
                             modifier = Modifier.padding(bottom = 12.dp, start = 14.dp)
                         )
+                    } else if (isMusicPlaying) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .padding(bottom = 14.dp, start = 14.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xE61E293B))
+                                .border(2.dp, Color(0xFF10B981), RoundedCornerShape(14.dp))
+                                .clickable {
+                                    try {
+                                        context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                                    } catch (e: Exception) {}
+                                }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981))
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Spotify Audio Active (Click to Enable Controls)",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
 
                     Row(
@@ -387,7 +415,7 @@ fun GloopTVApp() {
                             val isTopRow = index < 5
                             AppIconTile(
                                 app = app,
-                                width = 155.dp,
+                                width = 150.dp,
                                 height = 90.dp,
                                 focusRequester = if (index == 0) drawerFirstItemFocusRequester else null,
                                 onFocused = {},
@@ -418,10 +446,10 @@ fun GloopTVApp() {
 
 @Composable
 fun NowPlayingWidget(
-    track: TrackInfo,
+    playback: ActivePlayback,
     modifier: Modifier = Modifier
 ) {
-    val artBitmap = remember(track.art) { track.art?.asImageBitmap() }
+    val artBitmap = remember(playback.art) { playback.art?.asImageBitmap() }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -448,16 +476,16 @@ fun NowPlayingWidget(
             modifier = Modifier.widthIn(max = 210.dp)
         ) {
             Text(
-                text = track.title,
+                text = playback.title,
                 color = Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (track.artist.isNotEmpty()) {
+            if (playback.artist.isNotEmpty()) {
                 Text(
-                    text = track.artist,
+                    text = playback.artist,
                     color = Color(0xFF94A3B8),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Normal,
@@ -469,24 +497,39 @@ fun NowPlayingWidget(
 
         Spacer(modifier = Modifier.width(14.dp))
 
-        // Transport buttons: Prev, Play/Pause, Next
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             MediaControlButton(
-                onClick = track.onSkipPrev,
+                onClick = {
+                    try {
+                        playback.controller?.transportControls?.skipToPrevious()
+                    } catch (e: Exception) {}
+                },
                 label = "⏮"
             )
 
             MediaControlButton(
-                onClick = track.onPlayPause,
-                label = if (track.isPlaying) "⏸" else "▶",
+                onClick = {
+                    try {
+                        if (playback.isPlaying) {
+                            playback.controller?.transportControls?.pause()
+                        } else {
+                            playback.controller?.transportControls?.play()
+                        }
+                    } catch (e: Exception) {}
+                },
+                label = if (playback.isPlaying) "⏸" else "▶",
                 isPrimary = true
             )
 
             MediaControlButton(
-                onClick = track.onSkipNext,
+                onClick = {
+                    try {
+                        playback.controller?.transportControls?.skipToNext()
+                    } catch (e: Exception) {}
+                },
                 label = "⏭"
             )
         }
@@ -729,7 +772,6 @@ fun GloopMascot(
             .scale(scaleX = popScale.value, scaleY = popScale.value * danceScaleY)
             .size(150.dp)
     ) {
-        // Mascot Main Body
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -746,7 +788,6 @@ fun GloopMascot(
                 )
         )
 
-        // Mascot Face & Expressions
         Canvas(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -756,7 +797,6 @@ fun GloopMascot(
             val eyeWidth = 7.dp.toPx()
 
             if (isSleeping) {
-                // Closed sleeping curved eyes
                 drawArc(
                     color = Color(0xFF064E3B),
                     startAngle = 0f,
@@ -775,8 +815,6 @@ fun GloopMascot(
                     size = Size(eyeWidth * 2, eyeWidth),
                     style = Stroke(width = 3.dp.toPx())
                 )
-
-                // Soft smiling sleeping mouth
                 drawArc(
                     color = Color(0xFF064E3B),
                     startAngle = 20f,
@@ -791,7 +829,6 @@ fun GloopMascot(
                 val pupilShift = pupilOffsetX.dp.toPx()
                 val lookDownY = 3.dp.toPx()
 
-                // Left Eye
                 drawOval(
                     color = Color.White,
                     topLeft = Offset(size.width * 0.33f - eyeWidth, size.height * 0.40f - eyeHeight),
@@ -805,7 +842,6 @@ fun GloopMascot(
                     )
                 }
 
-                // Right Eye
                 drawOval(
                     color = Color.White,
                     topLeft = Offset(size.width * 0.67f - eyeWidth, size.height * 0.40f - eyeHeight),
@@ -840,7 +876,6 @@ fun GloopMascot(
             }
         }
 
-        // Animated Sleeping Zzz
         if (isSleeping) {
             val zzzOffset by infiniteTransition.animateFloat(
                 initialValue = 0f,
@@ -862,7 +897,6 @@ fun GloopMascot(
             )
         }
 
-        // Mascot Headwear
         if (hatType != HatType.NONE) {
             Canvas(
                 modifier = Modifier
@@ -872,7 +906,6 @@ fun GloopMascot(
             ) {
                 when (hatType) {
                     HatType.PARTY -> {
-                        // Cone Party Hat
                         val hatPath = Path().apply {
                             moveTo(size.width * 0.50f, 4f)
                             lineTo(size.width * 0.28f, size.height * 0.88f)
@@ -880,8 +913,6 @@ fun GloopMascot(
                             close()
                         }
                         drawPath(path = hatPath, color = Color(0xFFF59E0B))
-
-                        // Hat Pom-pom
                         drawCircle(
                             color = Color(0xFFEC4899),
                             radius = 6.dp.toPx(),
@@ -890,7 +921,6 @@ fun GloopMascot(
                     }
 
                     HatType.CHRISTMAS -> {
-                        // Red Santa Hat
                         val santaPath = Path().apply {
                             moveTo(size.width * 0.24f, size.height * 0.74f)
                             cubicTo(
@@ -902,16 +932,12 @@ fun GloopMascot(
                             close()
                         }
                         drawPath(path = santaPath, color = Color(0xFFDC2626))
-
-                        // White Fluffy Trim
                         drawRoundRect(
                             color = Color.White,
                             topLeft = Offset(size.width * 0.20f, size.height * 0.68f),
                             size = Size(size.width * 0.60f, size.height * 0.22f),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx())
                         )
-
-                        // Santa Pom-pom
                         drawCircle(
                             color = Color.White,
                             radius = 7.dp.toPx(),
@@ -920,7 +946,6 @@ fun GloopMascot(
                     }
 
                     HatType.SCROOGE_NIGHTCAP -> {
-                        // Slouching Scrooge Sleeping Nightcap
                         val nightcapPath = Path().apply {
                             moveTo(size.width * 0.24f, size.height * 0.75f)
                             cubicTo(
@@ -931,17 +956,13 @@ fun GloopMascot(
                             lineTo(size.width * 0.76f, size.height * 0.75f)
                             close()
                         }
-                        drawPath(path = nightcapPath, color = Color(0xFF1E3A8A)) // Midnight blue cap
-
-                        // White fuzzy brim
+                        drawPath(path = nightcapPath, color = Color(0xFF1E3A8A))
                         drawRoundRect(
                             color = Color(0xFFE2E8F0),
                             topLeft = Offset(size.width * 0.20f, size.height * 0.70f),
                             size = Size(size.width * 0.60f, size.height * 0.20f),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
                         )
-
-                        // Hanging pom-pom on the side
                         drawCircle(
                             color = Color(0xFFE2E8F0),
                             radius = 6.dp.toPx(),
