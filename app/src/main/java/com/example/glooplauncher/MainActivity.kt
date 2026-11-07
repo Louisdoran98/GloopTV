@@ -132,7 +132,6 @@ class GloopNotificationListener : NotificationListenerService() {
                         isPlaying = isPlaying,
                         controller = active
                     )
-                    return
                 }
             }
         } catch (e: Exception) {}
@@ -166,7 +165,7 @@ fun GloopTVApp() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    val sortedApps = remember {
+    val sortedApps: List<AppModel> = remember {
         val pm = context.packageManager
 
         val standardIntent = Intent(Intent.ACTION_MAIN, null).apply {
@@ -193,7 +192,7 @@ fun GloopTVApp() {
             .sortedBy { it.label.lowercase(Locale.getDefault()) }
     }
 
-    val favoriteApps = remember(sortedApps) {
+    val favoriteApps: List<AppModel> = remember(sortedApps) {
         val preferredKeywords = listOf(
             listOf("now tv", "nowtv", "sky.now"),
             listOf("prime video", "amazon.video", "amazon.avod", "amazon instant video"),
@@ -228,7 +227,6 @@ fun GloopTVApp() {
 
         while (true) {
             isAudioActive = audioManager?.isMusicActive == true
-            // Periodically check sessions directly in case service callback was delayed
             try {
                 val controllers = sessionManager?.getActiveSessions(component)
                 if (!controllers.isNullOrEmpty()) {
@@ -244,7 +242,6 @@ fun GloopTVApp() {
                         val art = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
                             ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
 
-                        // Force state update through listener companion
                         val field = GloopNotificationListener::class.java.getDeclaredField("_currentMedia")
                         field.isAccessible = true
                         @Suppress("UNCHECKED_CAST")
@@ -392,7 +389,7 @@ fun GloopTVApp() {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        favoriteApps.forEachIndexed { index, app ->
+                        favoriteApps.forEachIndexed { index: Int, app: AppModel ->
                             AppIconTile(
                                 app = app,
                                 width = 155.dp,
@@ -450,7 +447,7 @@ fun GloopTVApp() {
                         contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        itemsIndexed(sortedApps) { index, app ->
+                        itemsIndexed(sortedApps) { index: Int, app: AppModel ->
                             val isTopRow = index < 5
                             AppIconTile(
                                 app = app,
@@ -473,4 +470,545 @@ fun GloopTVApp() {
                                     } else {
                                         false
                                     }
-                
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun NowPlayingWidget(
+    playback: ActivePlayback,
+    modifier: Modifier = Modifier
+) {
+    val artBitmap = remember(playback.art) { playback.art?.asImageBitmap() }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xE61E293B))
+            .border(1.5.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        if (artBitmap != null) {
+            Image(
+                bitmap = artBitmap,
+                contentDescription = "Cover",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(10.dp))
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+        }
+
+        Column(
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.widthIn(max = 210.dp)
+        ) {
+            Text(
+                text = playback.title,
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (playback.artist.isNotEmpty()) {
+                Text(
+                    text = playback.artist,
+                    color = Color(0xFF94A3B8),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MediaControlButton(
+                onClick = {
+                    try {
+                        playback.controller?.transportControls?.skipToPrevious()
+                    } catch (e: Exception) {}
+                },
+                label = "⏮"
+            )
+
+            MediaControlButton(
+                onClick = {
+                    try {
+                        if (playback.isPlaying) {
+                            playback.controller?.transportControls?.pause()
+                        } else {
+                            playback.controller?.transportControls?.play()
+                        }
+                    } catch (e: Exception) {}
+                },
+                label = if (playback.isPlaying) "⏸" else "▶",
+                isPrimary = true
+            )
+
+            MediaControlButton(
+                onClick = {
+                    try {
+                        playback.controller?.transportControls?.skipToNext()
+                    } catch (e: Exception) {}
+                },
+                label = "⏭"
+            )
+        }
+    }
+}
+
+@Composable
+fun MediaControlButton(
+    onClick: () -> Unit,
+    label: String,
+    isPrimary: Boolean = false
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (isFocused) 1.18f else 1.0f,
+        label = "btnScale"
+    )
+
+    val bgColor = when {
+        isFocused -> Color(0xFF10B981)
+        isPrimary -> Color(0xFF334155)
+        else -> Color(0xFF1E293B)
+    }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(34.dp)
+            .scale(scale)
+            .clip(CircleShape)
+            .background(bgColor)
+            .border(
+                width = if (isFocused) 2.dp else 1.dp,
+                color = if (isFocused) Color.White else Color(0x33FFFFFF),
+                shape = CircleShape
+            )
+            .focusable(interactionSource = interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+    ) {
+        Text(
+            text = label,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+fun AppIconTile(
+    app: AppModel,
+    width: Dp,
+    height: Dp,
+    focusRequester: FocusRequester? = null,
+    onFocused: () -> Unit,
+    onClick: () -> Unit,
+    onKeyCode: ((Int) -> Boolean)? = null
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    LaunchedEffect(isFocused) {
+        if (isFocused) {
+            onFocused()
+        }
+    }
+
+    val scale by animateFloatAsState(
+        targetValue = if (isFocused) 1.12f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "tileScale"
+    )
+
+    val borderColor = if (isFocused) Color(0xFF60A5FA) else Color.Transparent
+
+    val appBitmap = remember(app.packageName) {
+        try {
+            app.icon?.toBitmap(width = 360, height = 210)?.asImageBitmap()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .size(width = width, height = height)
+            .scale(scale)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF1E293B))
+            .border(3.dp, borderColor, RoundedCornerShape(14.dp))
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusable(interactionSource = interactionSource)
+            .onKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown && onKeyCode != null) {
+                    onKeyCode(keyEvent.nativeKeyEvent.keyCode)
+                } else {
+                    false
+                }
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    onFocused()
+                    onClick()
+                }
+            )
+    ) {
+        if (appBitmap != null) {
+            Image(
+                bitmap = appBitmap,
+                contentDescription = app.label,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+@Composable
+fun ClockHeader(modifier: Modifier = Modifier) {
+    var currentTime by remember { mutableStateOf("") }
+    var currentDayAndDate by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val dayDateFormat = SimpleDateFormat("EEEE, d MMMM", Locale.getDefault())
+        while (true) {
+            val now = Date()
+            currentTime = timeFormat.format(now)
+            currentDayAndDate = dayDateFormat.format(now)
+            delay(1000)
+        }
+    }
+
+    Column(modifier = modifier) {
+        Text(
+            text = currentTime,
+            color = Color.White,
+            fontSize = 42.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = currentDayAndDate,
+            color = Color(0xFF94A3B8),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal
+        )
+    }
+}
+
+@Composable
+fun GloopMascot(
+    eyeTargetRatio: Float,
+    popTrigger: Int,
+    isDancing: Boolean = false,
+    hatType: HatType = HatType.NONE,
+    isSleeping: Boolean = false
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "mascotMotion")
+    val animDuration = when {
+        isSleeping -> 2600
+        isDancing -> 480
+        else -> 1400
+    }
+
+    val idleOffsetY by infiniteTransition.animateFloat(
+        initialValue = if (isSleeping) -4f else (if (isDancing) -26f else -12f),
+        targetValue = if (isSleeping) 4f else (if (isDancing) 18f else 12f),
+        animationSpec = infiniteRepeatable(
+            animation = tween(animDuration, easing = if (isDancing) FastOutLinearInEasing else EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "idleOffset"
+    )
+
+    val idleRotation by infiniteTransition.animateFloat(
+        initialValue = if (isSleeping) -1f else (if (isDancing) -12f else -4f),
+        targetValue = if (isSleeping) 1f else (if (isDancing) 12f else 4f),
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (isDancing) animDuration * 2 else animDuration + 400, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "idleRotation"
+    )
+
+    val danceScaleY by infiniteTransition.animateFloat(
+        initialValue = if (isDancing) 0.88f else (if (isSleeping) 0.98f else 1.0f),
+        targetValue = if (isDancing) 1.12f else (if (isSleeping) 1.02f else 1.0f),
+        animationSpec = infiniteRepeatable(
+            animation = tween(animDuration, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "danceScaleY"
+    )
+
+    val blinkProgress by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.05f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 3600
+                1f at 0
+                1f at 3400
+                0.05f at 3500
+                1f at 3600
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "blink"
+    )
+
+    val pupilOffsetX by animateFloatAsState(
+        targetValue = (eyeTargetRatio - 0.5f) * 10f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "pupilX"
+    )
+
+    val popScale = remember { Animatable(1f) }
+    LaunchedEffect(popTrigger) {
+        if (popTrigger > 0 && !isSleeping) {
+            popScale.animateTo(1.32f, animationSpec = tween(100, easing = FastOutLinearInEasing))
+            popScale.animateTo(0.85f, animationSpec = tween(90, easing = LinearOutSlowInEasing))
+            popScale.animateTo(1.0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+        }
+    }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .offset(y = idleOffsetY.dp)
+            .rotate(idleRotation)
+            .scale(scaleX = popScale.value, scaleY = popScale.value * danceScaleY)
+            .size(150.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 10.dp)
+                .size(110.dp)
+                .background(
+                    color = Color(0xFF10B981),
+                    shape = RoundedCornerShape(
+                        topStart = 48.dp,
+                        topEnd = 48.dp,
+                        bottomStart = 34.dp,
+                        bottomEnd = 34.dp
+                    )
+                )
+        )
+
+        Canvas(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 10.dp)
+                .size(100.dp)
+        ) {
+            val eyeWidth = 7.dp.toPx()
+
+            if (isSleeping) {
+                drawArc(
+                    color = Color(0xFF064E3B),
+                    startAngle = 0f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(size.width * 0.33f - eyeWidth, size.height * 0.40f),
+                    size = Size(eyeWidth * 2, eyeWidth),
+                    style = Stroke(width = 3.dp.toPx())
+                )
+                drawArc(
+                    color = Color(0xFF064E3B),
+                    startAngle = 0f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(size.width * 0.67f - eyeWidth, size.height * 0.40f),
+                    size = Size(eyeWidth * 2, eyeWidth),
+                    style = Stroke(width = 3.dp.toPx())
+                )
+                drawArc(
+                    color = Color(0xFF064E3B),
+                    startAngle = 20f,
+                    sweepAngle = 140f,
+                    useCenter = false,
+                    topLeft = Offset(size.width * 0.42f, size.height * 0.55f),
+                    size = Size(size.width * 0.16f, size.height * 0.10f),
+                    style = Stroke(width = 3.dp.toPx())
+                )
+            } else {
+                val eyeHeight = (7.dp.toPx()) * blinkProgress
+                val pupilShift = pupilOffsetX.dp.toPx()
+                val lookDownY = 3.dp.toPx()
+
+                drawOval(
+                    color = Color.White,
+                    topLeft = Offset(size.width * 0.33f - eyeWidth, size.height * 0.40f - eyeHeight),
+                    size = Size(eyeWidth * 2, eyeHeight * 2)
+                )
+                if (blinkProgress > 0.35f) {
+                    drawCircle(
+                        color = Color.Black,
+                        radius = eyeWidth * 0.52f,
+                        center = Offset(size.width * 0.33f + pupilShift, size.height * 0.40f + lookDownY)
+                    )
+                }
+
+                drawOval(
+                    color = Color.White,
+                    topLeft = Offset(size.width * 0.67f - eyeWidth, size.height * 0.40f - eyeHeight),
+                    size = Size(eyeWidth * 2, eyeHeight * 2)
+                )
+                if (blinkProgress > 0.35f) {
+                    drawCircle(
+                        color = Color.Black,
+                        radius = eyeWidth * 0.52f,
+                        center = Offset(size.width * 0.67f + pupilShift, size.height * 0.40f + lookDownY)
+                    )
+                }
+
+                val isExcited = popScale.value > 1.05f || isDancing
+                if (isExcited) {
+                    drawOval(
+                        color = Color(0xFF064E3B),
+                        topLeft = Offset(size.width * 0.41f, size.height * 0.54f),
+                        size = Size(size.width * 0.18f, size.height * 0.19f)
+                    )
+                } else {
+                    drawArc(
+                        color = Color(0xFF064E3B),
+                        startAngle = 15f,
+                        sweepAngle = 150f,
+                        useCenter = false,
+                        topLeft = Offset(size.width * 0.38f, size.height * 0.52f),
+                        size = Size(size.width * 0.24f, size.height * 0.16f),
+                        style = Stroke(width = 4.dp.toPx())
+                    )
+                }
+            }
+        }
+
+        if (isSleeping) {
+            val zzzOffset by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = -16f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(2200, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "zzzAnim"
+            )
+            Text(
+                text = "z z Z",
+                color = Color(0x99FFFFFF),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 10.dp, y = (10 + zzzOffset).dp)
+            )
+        }
+
+        if (hatType != HatType.NONE) {
+            Canvas(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .size(width = 110.dp, height = 55.dp)
+                    .offset(y = (-6).dp)
+            ) {
+                when (hatType) {
+                    HatType.PARTY -> {
+                        val hatPath = Path().apply {
+                            moveTo(size.width * 0.50f, 4f)
+                            lineTo(size.width * 0.28f, size.height * 0.88f)
+                            lineTo(size.width * 0.72f, size.height * 0.88f)
+                            close()
+                        }
+                        drawPath(path = hatPath, color = Color(0xFFF59E0B))
+                        drawCircle(
+                            color = Color(0xFFEC4899),
+                            radius = 6.dp.toPx(),
+                            center = Offset(size.width * 0.50f, 4f)
+                        )
+                    }
+
+                    HatType.CHRISTMAS -> {
+                        val santaPath = Path().apply {
+                            moveTo(size.width * 0.24f, size.height * 0.74f)
+                            cubicTo(
+                                size.width * 0.30f, size.height * 0.15f,
+                                size.width * 0.65f, size.height * 0.10f,
+                                size.width * 0.82f, size.height * 0.35f
+                            )
+                            lineTo(size.width * 0.76f, size.height * 0.74f)
+                            close()
+                        }
+                        drawPath(path = santaPath, color = Color(0xFFDC2626))
+                        drawRoundRect(
+                            color = Color.White,
+                            topLeft = Offset(size.width * 0.20f, size.height * 0.68f),
+                            size = Size(size.width * 0.60f, size.height * 0.22f),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx())
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 7.dp.toPx(),
+                            center = Offset(size.width * 0.84f, size.height * 0.38f)
+                        )
+                    }
+
+                    HatType.SCROOGE_NIGHTCAP -> {
+                        val nightcapPath = Path().apply {
+                            moveTo(size.width * 0.24f, size.height * 0.75f)
+                            cubicTo(
+                                size.width * 0.28f, size.height * 0.05f,
+                                size.width * 0.75f, size.height * 0.05f,
+                                size.width * 0.86f, size.height * 0.65f
+                            )
+                            lineTo(size.width * 0.76f, size.height * 0.75f)
+                            close()
+                        }
+                        drawPath(path = nightcapPath, color = Color(0xFF1E3A8A))
+                        drawRoundRect(
+                            color = Color(0xFFE2E8F0),
+                            topLeft = Offset(size.width * 0.20f, size.height * 0.70f),
+                            size = Size(size.width * 0.60f, size.height * 0.20f),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
+                        )
+                        drawCircle(
+                            color = Color(0xFFE2E8F0),
+                            radius = 6.dp.toPx(),
+                            center = Offset(size.width * 0.86f, size.height * 0.68f)
+                        )
+                    }
+
+                    HatType.NONE -> {}
+                }
+            }
+        }
+    }
+}
