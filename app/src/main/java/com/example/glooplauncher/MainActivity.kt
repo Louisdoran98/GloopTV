@@ -25,11 +25,9 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
@@ -115,8 +113,7 @@ fun GloopTVApp() {
             listOf("prime video", "amazon.video", "amazon.avod", "amazon instant video"),
             listOf("disney", "disneyplus"),
             listOf("spotify"),
-            listOf("paramount", "cbs.app", "cbs"),
-            listOf("netflix")
+            listOf("paramount", "cbs.app", "cbs")
         )
 
         val matchedFavorites = mutableListOf<AppModel>()
@@ -132,7 +129,7 @@ fun GloopTVApp() {
         }
 
         val fallbackApps = sortedApps.filter { !matchedFavorites.contains(it) }
-        (matchedFavorites + fallbackApps).take(6)
+        (matchedFavorites + fallbackApps).take(5)
     }
 
     var isMusicPlaying by remember { mutableStateOf(false) }
@@ -199,14 +196,14 @@ fun GloopTVApp() {
 
                 Column(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                 ) {
                     if (isMusicPlaying) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
-                                .padding(bottom = 14.dp, start = 4.dp)
+                                .padding(bottom = 14.dp, start = 14.dp)
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(Color(0xE61E293B))
                                 .border(2.dp, Color(0xFF10B981), RoundedCornerShape(14.dp))
@@ -228,12 +225,14 @@ fun GloopTVApp() {
                         }
                     }
 
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(18.dp),
-                        contentPadding = PaddingValues(vertical = 10.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        itemsIndexed(favoriteApps) { index, app ->
+                        favoriteApps.forEachIndexed { index, app ->
                             AppIconTile(
                                 app = app,
                                 width = 155.dp,
