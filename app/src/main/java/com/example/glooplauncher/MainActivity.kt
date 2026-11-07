@@ -84,11 +84,19 @@ fun GloopTVApp() {
 
     val sortedApps = remember {
         val pm = context.packageManager
-        val intent = Intent(Intent.ACTION_MAIN, null).apply {
+
+        val standardIntent = Intent(Intent.ACTION_MAIN, null).apply {
             addCategory(Intent.CATEGORY_LAUNCHER)
         }
-        val resolveInfos: List<ResolveInfo> = pm.queryIntentActivities(intent, 0)
-        resolveInfos
+        val standardApps = pm.queryIntentActivities(standardIntent, 0)
+
+        val leanbackIntent = Intent(Intent.ACTION_MAIN, null).apply {
+            addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
+        }
+        val leanbackApps = pm.queryIntentActivities(leanbackIntent, 0)
+
+        (standardApps + leanbackApps)
+            .filter { it.activityInfo.packageName != context.packageName }
             .map {
                 val bannerOrIcon = it.activityInfo.loadBanner(pm) ?: it.loadIcon(pm)
                 AppModel(
@@ -152,6 +160,7 @@ fun GloopTVApp() {
         coroutineScope.launch {
             delay(220)
             val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+                ?: context.packageManager.getLeanbackLaunchIntentForPackage(packageName)
             if (launchIntent != null) {
                 context.startActivity(launchIntent)
             }
