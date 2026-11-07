@@ -66,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -178,7 +179,7 @@ fun GloopTVApp() {
         }
         val leanbackApps = pm.queryIntentActivities(leanbackIntent, 0)
 
-        (standardApps + leanbackApps)
+        val installedApps = (standardApps + leanbackApps)
             .filter { it.activityInfo.packageName != context.packageName }
             .map {
                 val bannerOrIcon = it.activityInfo.loadBanner(pm) ?: it.loadIcon(pm)
@@ -190,6 +191,14 @@ fun GloopTVApp() {
             }
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase(Locale.getDefault()) }
+
+        val settingsTile = AppModel(
+            label = "TV Settings",
+            packageName = "com.android.tv.settings",
+            icon = ContextCompat.getDrawable(context, android.R.drawable.ic_menu_preferences)
+        )
+
+        listOf(settingsTile) + installedApps
     }
 
     val favoriteApps: List<AppModel> = remember(sortedApps) {
@@ -213,7 +222,9 @@ fun GloopTVApp() {
             }
         }
 
-        val fallbackApps = sortedApps.filter { !matchedFavorites.contains(it) }
+        val fallbackApps = sortedApps.filter { app ->
+            app.packageName != "com.android.tv.settings" && !matchedFavorites.contains(app)
+        }
         (matchedFavorites + fallbackApps).take(5)
     }
 
@@ -301,10 +312,20 @@ fun GloopTVApp() {
         popTrigger++
         coroutineScope.launch {
             delay(220)
-            val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
-                ?: context.packageManager.getLeanbackLaunchIntentForPackage(packageName)
-            if (launchIntent != null) {
-                context.startActivity(launchIntent)
+            if (packageName == "com.android.tv.settings") {
+                try {
+                    context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                } catch (e: Exception) {
+                    try {
+                        context.startActivity(Intent("android.settings.SETTINGS"))
+                    } catch (e2: Exception) {}
+                }
+            } else {
+                val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+                    ?: context.packageManager.getLeanbackLaunchIntentForPackage(packageName)
+                if (launchIntent != null) {
+                    context.startActivity(launchIntent)
+                }
             }
         }
     }
@@ -994,7 +1015,7 @@ fun GloopMascot(
                         }
                         drawPath(path = nightcapPath, color = Color(0xFF1E3A8A))
                         drawRoundRect(
-                            color = Color(0xFFE2E8F0),
+                            color = Color.White,
                             topLeft = Offset(size.width * 0.20f, size.height * 0.70f),
                             size = Size(size.width * 0.60f, size.height * 0.20f),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
