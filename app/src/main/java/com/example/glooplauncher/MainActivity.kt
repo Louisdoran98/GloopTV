@@ -22,6 +22,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -60,10 +61,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -71,11 +75,13 @@ import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 data class ActivePlayback(
     val title: String = "",
@@ -140,10 +146,22 @@ class GloopNotificationListener : NotificationListenerService() {
 }
 
 class MainActivity : ComponentActivity() {
+    private val lastInteractionTime = mutableLongStateOf(System.currentTimeMillis())
+
+    override fun dispatchKeyEvent(event: AndroidKeyEvent?): Boolean {
+        if (event != null && event.action == AndroidKeyEvent.ACTION_DOWN) {
+            lastInteractionTime.longValue = System.currentTimeMillis()
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            GloopTVApp()
+            GloopTVApp(
+                lastInteractionTime = lastInteractionTime.longValue,
+                onUserInteract = { lastInteractionTime.longValue = System.currentTimeMillis() }
+            )
         }
     }
 }
@@ -161,10 +179,23 @@ enum class HatType {
     SCROOGE_NIGHTCAP
 }
 
+val dvdBounceColors = listOf(
+    Color(0xFF10B981), // Emerald (default)
+    Color(0xFF06B6D4), // Cyan
+    Color(0xFFEC4899), // Pink
+    Color(0xFFF59E0B), // Amber
+    Color(0xFF8B5CF6), // Purple
+    Color(0xFFEF4444)  // Coral Red
+)
+
 @Composable
-fun GloopTVApp() {
+fun GloopTVApp(
+    lastInteractionTime: Long,
+    onUserInteract: () -> Unit
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val density = LocalDensity.current
 
     val sortedApps: List<AppModel> = remember {
         val pm = context.packageManager
@@ -274,6 +305,7 @@ fun GloopTVApp() {
 
     val isMusicPlaying = activePlayback?.isPlaying == true || isAudioActive
 
+    // Hat and sleep state logic
     var currentHat by remember { mutableStateOf(HatType.NONE) }
     var isSleeping by remember { mutableStateOf(false) }
 
@@ -301,14 +333,91 @@ fun GloopTVApp() {
     var focusedIndex by remember { mutableIntStateOf(0) }
     var popTrigger by remember { mutableIntStateOf(0) }
 
+    // Screen Saver / DVD Idle State
+    var isScreenSaverActive by remember { mutableStateOf(false) }
+    val fiveMinutesMillis = 5 * 60 * 1000L
+
+    LaunchedEffect(lastInteractionTime, isDrawerOpen) {
+        while (true) {
+            val elapsed = System.currentTimeMillis() - lastInteractionTime
+            if (elapsed >= fiveMinutesMillis && !isDrawerOpen) {
+                isScreenSaverActive = true
+            } else {
+                isScreenSaverActive = false
+            }
+            delay(1000)
+        }
+    }
+
+    // DVD physics variables
+    var containerWidthPx by remember { mutableFloatStateOf(0f) }
+    var containerHeightPx by remember { mutableFloatStateOf(0f) }
+    val mascotBoxSizeDp = 150.dp
+    val mascotBoxSizePx = with(density) { mascotBoxSizeDp.toPx() }
+
+    var posX by remember { mutableFloatStateOf(60f) }
+    var posY by remember { mutableFloatStateOf(60f) }
+    var velocityX by remember { mutableFloatStateOf(4.2f) }
+    var velocityY by remember { mutableFloatStateOf(3.4f) }
+    var colorIndex by remember { mutableIntStateOf(0) }
+
+    val animatedMascotColor by animateColorAsState(
+        targetValue = if (isScreenSaverActive) dvdBounceColors[colorIndex] else Color(0xFF10B981),
+        animationSpec = tween(400),
+        label = "mascotColor"
+    )
+
+    // DVD bouncing frame loop
+    LaunchedEffect(isScreenSaverActive, containerWidthPx, containerHeightPx) {
+        if (isScreenSaverActive && containerWidthPx > 0f && containerHeightPx > 0f) {
+            val maxX = (containerWidthPx - mascotBoxSizePx).coerceAtLeast(0f)
+            val maxY = (containerHeightPx - mascotBoxSizePx).coerceAtLeast(0f)
+
+            while (isActive && isScreenSaverActive) {
+                withFrameNanos {
+                    posX += velocityX
+                    posY += velocityY
+
+                    var hitEdge = false
+
+                    if (posX <= 0f) {
+                        posX = 0f
+                        velocityX = -velocityX
+                        hitEdge = true
+                    } else if (posX >= maxX) {
+                        posX = maxX
+                        velocityX = -velocityX
+                        hitEdge = true
+                    }
+
+                    if (posY <= 0f) {
+                        posY = 0f
+                        velocityY = -velocityY
+                        hitEdge = true
+                    } else if (posY >= maxY) {
+                        posY = maxY
+                        velocityY = -velocityY
+                        hitEdge = true
+                    }
+
+                    if (hitEdge) {
+                        colorIndex = (colorIndex + 1) % dvdBounceColors.size
+                    }
+                }
+            }
+        }
+    }
+
     val drawerFirstItemFocusRequester = remember { FocusRequester() }
     val homeFirstItemFocusRequester = remember { FocusRequester() }
 
     BackHandler(enabled = isDrawerOpen) {
+        onUserInteract()
         isDrawerOpen = false
     }
 
     fun launchApp(packageName: String) {
+        onUserInteract()
         popTrigger++
         coroutineScope.launch {
             delay(220)
@@ -331,10 +440,22 @@ fun GloopTVApp() {
     }
 
     Surface(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged {
+                containerWidthPx = it.width.toFloat()
+                containerHeightPx = it.height.toFloat()
+            },
         color = Color(0xFF0F172A)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            // Main Home Screen Content (dimmed when screensaver is running)
+            val contentAlpha by animateFloatAsState(
+                targetValue = if (isScreenSaverActive) 0.15f else 1.0f,
+                animationSpec = tween(800),
+                label = "contentAlpha"
+            )
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -346,20 +467,24 @@ fun GloopTVApp() {
                         .padding(top = 8.dp, start = 8.dp)
                 )
 
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 16.dp, end = 24.dp)
-                ) {
-                    val total = if (favoriteApps.isNotEmpty()) favoriteApps.size else 1
-                    val eyeTargetRatio = (focusedIndex.toFloat() / (total - 1).coerceAtLeast(1))
-                    GloopMascot(
-                        eyeTargetRatio = eyeTargetRatio,
-                        popTrigger = popTrigger,
-                        isDancing = isMusicPlaying && !isSleeping,
-                        hatType = currentHat,
-                        isSleeping = isSleeping
-                    )
+                // Standard Top-Right Anchor when screensaver is NOT active
+                if (!isScreenSaverActive) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 16.dp, end = 24.dp)
+                    ) {
+                        val total = if (favoriteApps.isNotEmpty()) favoriteApps.size else 1
+                        val eyeTargetRatio = (focusedIndex.toFloat() / (total - 1).coerceAtLeast(1))
+                        GloopMascot(
+                            eyeTargetRatio = eyeTargetRatio,
+                            popTrigger = popTrigger,
+                            isDancing = isMusicPlaying && !isSleeping,
+                            hatType = currentHat,
+                            isSleeping = isSleeping,
+                            mascotColor = Color(0xFF10B981)
+                        )
+                    }
                 }
 
                 Column(
@@ -381,6 +506,7 @@ fun GloopTVApp() {
                                 .background(Color(0xE61E293B))
                                 .border(2.dp, Color(0xFF10B981), RoundedCornerShape(14.dp))
                                 .clickable {
+                                    onUserInteract()
                                     try {
                                         context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                                     } catch (e: Exception) {}
@@ -416,9 +542,16 @@ fun GloopTVApp() {
                                 width = 155.dp,
                                 height = 90.dp,
                                 focusRequester = if (index == 0) homeFirstItemFocusRequester else null,
-                                onFocused = { focusedIndex = index },
-                                onClick = { launchApp(app.packageName) },
+                                onFocused = {
+                                    onUserInteract()
+                                    focusedIndex = index
+                                },
+                                onClick = {
+                                    onUserInteract()
+                                    launchApp(app.packageName)
+                                },
                                 onKeyCode = { keyCode ->
+                                    onUserInteract()
                                     if (keyCode == AndroidKeyEvent.KEYCODE_DPAD_DOWN) {
                                         isDrawerOpen = true
                                         coroutineScope.launch {
@@ -433,6 +566,24 @@ fun GloopTVApp() {
                             )
                         }
                     }
+                }
+            }
+
+            // DVD Screensaver Overlay Layer
+            if (isScreenSaverActive) {
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(posX.roundToInt(), posY.roundToInt()) }
+                        .size(mascotBoxSizeDp)
+                ) {
+                    GloopMascot(
+                        eyeTargetRatio = 0.5f,
+                        popTrigger = 0,
+                        isDancing = isMusicPlaying,
+                        hatType = currentHat,
+                        isSleeping = isSleeping,
+                        mascotColor = animatedMascotColor
+                    )
                 }
             }
 
@@ -475,12 +626,14 @@ fun GloopTVApp() {
                                 width = 150.dp,
                                 height = 90.dp,
                                 focusRequester = if (index == 0) drawerFirstItemFocusRequester else null,
-                                onFocused = {},
+                                onFocused = { onUserInteract() },
                                 onClick = {
+                                    onUserInteract()
                                     isDrawerOpen = false
                                     launchApp(app.packageName)
                                 },
                                 onKeyCode = { keyCode ->
+                                    onUserInteract()
                                     if (keyCode == AndroidKeyEvent.KEYCODE_DPAD_UP && isTopRow) {
                                         isDrawerOpen = false
                                         coroutineScope.launch {
@@ -751,7 +904,8 @@ fun GloopMascot(
     popTrigger: Int,
     isDancing: Boolean = false,
     hatType: HatType = HatType.NONE,
-    isSleeping: Boolean = false
+    isSleeping: Boolean = false,
+    mascotColor: Color = Color(0xFF10B981)
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "mascotMotion")
     val animDuration = when {
@@ -835,7 +989,7 @@ fun GloopMascot(
                 .padding(bottom = 10.dp)
                 .size(110.dp)
                 .background(
-                    color = Color(0xFF10B981),
+                    color = mascotColor,
                     shape = RoundedCornerShape(
                         topStart = 48.dp,
                         topEnd = 48.dp,
@@ -855,7 +1009,7 @@ fun GloopMascot(
 
             if (isSleeping) {
                 drawArc(
-                    color = Color(0xFF064E3B),
+                    color = Color(0x99000000),
                     startAngle = 0f,
                     sweepAngle = 180f,
                     useCenter = false,
@@ -864,7 +1018,7 @@ fun GloopMascot(
                     style = Stroke(width = 3.dp.toPx())
                 )
                 drawArc(
-                    color = Color(0xFF064E3B),
+                    color = Color(0x99000000),
                     startAngle = 0f,
                     sweepAngle = 180f,
                     useCenter = false,
@@ -873,7 +1027,7 @@ fun GloopMascot(
                     style = Stroke(width = 3.dp.toPx())
                 )
                 drawArc(
-                    color = Color(0xFF064E3B),
+                    color = Color(0x99000000),
                     startAngle = 20f,
                     sweepAngle = 140f,
                     useCenter = false,
@@ -915,13 +1069,13 @@ fun GloopMascot(
                 val isExcited = popScale.value > 1.05f || isDancing
                 if (isExcited) {
                     drawOval(
-                        color = Color(0xFF064E3B),
+                        color = Color(0x99000000),
                         topLeft = Offset(size.width * 0.41f, size.height * 0.54f),
                         size = Size(size.width * 0.18f, size.height * 0.19f)
                     )
                 } else {
                     drawArc(
-                        color = Color(0xFF064E3B),
+                        color = Color(0x99000000),
                         startAngle = 15f,
                         sweepAngle = 150f,
                         useCenter = false,
@@ -1015,7 +1169,7 @@ fun GloopMascot(
                         }
                         drawPath(path = nightcapPath, color = Color(0xFF1E3A8A))
                         drawRoundRect(
-                            color = Color.White,
+                            color = Color(0xFFE2E8F0),
                             topLeft = Offset(size.width * 0.20f, size.height * 0.70f),
                             size = Size(size.width * 0.60f, size.height * 0.20f),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
